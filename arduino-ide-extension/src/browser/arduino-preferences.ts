@@ -204,9 +204,9 @@ const properties: ArduinoPreferenceSchemaProperties = {
     type: 'boolean',
     description: nls.localize(
       'arduino/preferences/cloud.enabled',
-      'True if the sketch sync functions are enabled. Defaults to true.'
+      'True if the sketch sync functions are enabled. Defaults to false (disabled for CognifyEV).'
     ),
-    default: true,
+    default: false,
   },
   'arduino.cloud.pull.warn': {
     type: 'boolean',
@@ -292,9 +292,9 @@ const properties: ArduinoPreferenceSchemaProperties = {
     type: 'boolean',
     description: nls.localize(
       'arduino/preferences/checkForUpdate',
-      "Receive notifications of available updates for the IDE, boards, and libraries. Requires an IDE restart after change. It's true by default."
+      "Receive notifications of available updates for the IDE, boards, and libraries. Requires an IDE restart after change. It's false by default (disabled for CognifyEV)."
     ),
-    default: true,
+    default: false,
   },
   'arduino.sketch.inoBlueprint': {
     type: 'string',
@@ -314,6 +314,32 @@ const properties: ArduinoPreferenceSchemaProperties = {
       defaultMonitorWidgetDockPanel
     ),
     default: defaultMonitorWidgetDockPanel,
+  },
+  'arduino.chat.geminiApiKey': {
+    type: 'string',
+    markdownDescription: nls.localize(
+      'arduino/preferences/chat/geminiApiKey',
+      'Google Gemini API key for the AI Chat feature. Get your API key from https://makersuite.google.com/app/apikey'
+    ),
+    default: '',
+  },
+  'arduino.chat.geminiModel': {
+    type: 'string',
+    enum: [
+      'gemini-2.5-pro',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-exp',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-flash-lite-exp',
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-exp',
+      'gemini-2.0-flash-lite',
+    ],
+    markdownDescription: nls.localize(
+      'arduino/preferences/chat/geminiModel',
+      'Gemini model to use for AI Chat. Options: gemini-2.5-pro (most capable), gemini-2.5-flash (balanced), gemini-2.5-flash-lite (fastest), gemini-2.0-flash, or gemini-2.0-flash-lite'
+    ),
+    default: 'gemini-2.0-flash-exp',
   },
 };
 export const ArduinoConfigSchema: PreferenceSchema = {
@@ -351,6 +377,8 @@ export interface ArduinoConfiguration {
   'arduino.sketch.inoBlueprint': string;
   'arduino.checkForUpdates': boolean;
   'arduino.monitor.dockPanel': MonitorWidgetDockPanel;
+  'arduino.chat.geminiApiKey': string;
+  'arduino.chat.geminiModel': 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-exp' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-lite-exp' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-2.0-flash-lite';
 }
 
 export const ArduinoPreferences = Symbol('ArduinoPreferences');
