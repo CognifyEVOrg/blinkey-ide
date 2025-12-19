@@ -180,7 +180,7 @@ export class ConfigServiceImpl
       const content = await fs.readFile(cliConfigPath, {
         encoding: 'utf8',
       });
-      const model = (yaml.safeLoad(content) || {}) as CliConfig;
+      const model = (yaml.load(content) || {}) as CliConfig;
       this.logger.info(`Loaded CLI configuration: ${JSON.stringify(model)}`);
       if (model.directories?.data && model.directories?.user) {
         this.logger.info(

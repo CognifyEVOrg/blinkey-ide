@@ -53,23 +53,9 @@ const maxFontSize = InterfaceScale.FontSize.MAX;
 const minFontSize = InterfaceScale.FontSize.MIN;
 const fontSizeStep = InterfaceScale.FontSize.STEP;
 
-// Common monospace fonts for the font family selector
-const MONOSPACE_FONTS = [
-  'Courier New',
-  'Monaco',
-  'Menlo',
-  'Ubuntu Mono',
-  'Consolas',
-  'Source Code Pro',
-  'Fira Code',
-  'JetBrains Mono',
-  'Roboto Mono',
-  'Inconsolata',
-  'Droid Sans Mono',
-  'DejaVu Sans Mono',
-  'Liberation Mono',
-  'monospace',
-];
+// Bundled monospace fonts for the font family selector.
+// These names correspond directly to the @font-face declarations in fonts.css.
+const MONOSPACE_FONTS = ['JetBrains Mono', 'Fira Code', 'Source Code Pro'];
 
 export class SettingsComponent extends React.Component<
   SettingsComponent.Props,
@@ -485,11 +471,8 @@ export class SettingsComponent extends React.Component<
       return MONOSPACE_FONTS[0];
     }
     // Remove quotes and extract first font name
-    const firstFont = fontFamily
-      .replace(/['"]/g, '')
-      .split(',')[0]
-      .trim();
-    // Check if it's in our list, otherwise return the first font
+    const firstFont = fontFamily.replace(/['"]/g, '').split(',')[0].trim();
+    // If it's in our list, return it, otherwise default
     return MONOSPACE_FONTS.includes(firstFont) ? firstFont : MONOSPACE_FONTS[0];
   }
 

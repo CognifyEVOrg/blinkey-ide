@@ -204,7 +204,7 @@ const properties: ArduinoPreferenceSchemaProperties = {
     type: 'boolean',
     description: nls.localize(
       'arduino/preferences/cloud.enabled',
-      'True if the sketch sync functions are enabled. Defaults to false (disabled for CognifyEV).'
+      'True if the sketch sync functions are enabled. Defaults to false (disabled for Blinky).'
     ),
     default: false,
   },
@@ -292,7 +292,7 @@ const properties: ArduinoPreferenceSchemaProperties = {
     type: 'boolean',
     description: nls.localize(
       'arduino/preferences/checkForUpdate',
-      "Receive notifications of available updates for the IDE, boards, and libraries. Requires an IDE restart after change. It's false by default (disabled for CognifyEV)."
+      "Receive notifications of available updates for the IDE, boards, and libraries. Requires an IDE restart after change. It's false by default (disabled for Blinky)."
     ),
     default: false,
   },

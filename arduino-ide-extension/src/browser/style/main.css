@@ -35,11 +35,15 @@
 .p-TabBar-toolbar .item.arduino-tool-item .arduino-upload-sketch--toolbar,
 .p-TabBar-toolbar .item.arduino-tool-item .arduino-verify-sketch--toolbar,
 .p-TabBar-toolbar .item.arduino-tool-item .arduino-start-debug {
-    background: var(--theia-arduino-toolbar-button-background);
+    /* Blinky-specific primary toolbar style (distinct from Arduino’s teal) */
+    background: linear-gradient(135deg, #4f46e5, #22c55e);
+    border-radius: 9999px;
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35),
+        0 8px 14px rgba(15, 23, 42, 0.45);
 }
 
 .p-TabBar-toolbar .item.arduino-tool-item.enabled:hover > div {
-    background: var(--theia-arduino-toolbar-button-hoverBackground);
+    background: linear-gradient(135deg, #4338ca, #16a34a);
 }
 
 .p-TabBar-toolbar
@@ -48,16 +52,14 @@
 .p-TabBar-toolbar
     .item.arduino-tool-item.enabled:hover
     > div.toggle-serial-plotter {
-    background-color: var(
-        --theia-arduino-toolbar-button-secondary-hoverBackground
-    );
-    border-radius: 14px;
+    background: rgba(148, 163, 184, 0.22);
+    border-radius: 9999px;
 }
 
 .arduino-verify-sketch--toolbar,
 .arduino-upload-sketch--toolbar,
 .arduino-start-debug {
-    border-radius: 14px;
+    border-radius: 9999px;
 }
 
 .item.arduino-tool-item.toggled {
@@ -68,7 +70,7 @@
 
 .item.arduino-tool-item.toggled .arduino-verify-sketch--toolbar,
 .item.arduino-tool-item.toggled .arduino-upload-sketch--toolbar {
-    background-color: var(--theia-arduino-toolbar-toggleBackground) !important;
+    background: radial-gradient(circle at 10% 20%, #22c55e 0, #22c55e 45%, #4f46e5 100%) !important;
 }
 
 .arduino-tool-icon {
@@ -78,12 +80,12 @@
 
 .arduino-verify-sketch--toolbar-icon {
     -webkit-mask: url(../icons/verify.svg) center no-repeat;
-    background-color: var(--theia-titleBar-activeBackground);
+    background-color: #f9fafb;
 }
 
 .arduino-upload-sketch--toolbar-icon {
     -webkit-mask: url(../icons/upload.svg) center no-repeat;
-    background-color: var(--theia-titleBar-activeBackground);
+    background-color: #f9fafb;
 }
 
 .toggle-serial-monitor-icon {

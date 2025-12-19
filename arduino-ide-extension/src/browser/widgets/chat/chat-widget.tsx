@@ -32,6 +32,8 @@ import { compactChatHistory, getHistoryStats } from './chat-history';
 import { AgentRegistry } from './agent-registry';
 import { UserRequest } from './agent-types';
 import URI from '@theia/core/lib/common/uri';
+import { ChatHistoryServiceClient } from './chat-history-service';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 
 const ReactMarkdown = React.lazy<React.ComponentType<Options>>(
   // @ts-expect-error see above
@@ -102,78 +104,307 @@ export class ChatWidget extends ReactWidget {
   @inject(AgentRegistry)
   private readonly agentRegistry: AgentRegistry;
 
+  @inject(ChatHistoryServiceClient)
+  private readonly chatHistoryService: ChatHistoryServiceClient;
+
+  // Thread management state
+  private currentProjectRoot: string | undefined;
+  private activeThreadId: string | undefined;
+  private threads: Array<{ id: string; title: string; updatedAt: string }> = [];
+
+  private static readonly WELCOME_MESSAGE_ID = 'welcome';
+  private static readonly ERROR_MESSAGE_ID_PREFIX = 'error';
+  private static readonly SUCCESS_MESSAGE_ID_PREFIX = 'success';
+  private static readonly INFO_MESSAGE_ID_PREFIX = 'info';
+  private static readonly LIBRARY_MESSAGE_ID_PREFIX = 'library';
+  private static readonly USER_MESSAGE_ID_PREFIX = 'user';
+  private static readonly ASSISTANT_MESSAGE_ID_PREFIX = 'assistant';
+  private static readonly INITIAL_WIDTH = '420px';
+  private static readonly MIN_WIDTH = '350px';
+  private static readonly WELCOME_NO_API_KEY = 'Welcome! Please configure your Gemini API key in the settings (click the gear icon) to start using the AI assistant.';
+  private static readonly WELCOME_WITH_API_KEY = 'Hello! I\'m your AI assistant. How can I help you today?';
+  private static readonly ERROR_CREATE_THREAD_PREFIX = 'Failed to create chat thread: ';
+  private static readonly ERROR_LOAD_THREAD = 'Failed to load thread: ';
+  private static readonly ERROR_APPLY_FIX = 'Error applying fix: ';
+  private static readonly ERROR_NO_EDITOR = 'Error: No active editor to apply the fix.';
+  private static readonly SUCCESS_FIX_APPLIED = '⚡ Fix applied and file(s) saved.';
+  private static readonly INFO_VERIFYING = '🛠️ Verifying the sketch...';
+  private static readonly ERROR_VERIFY_FAILED = 'Verification failed to start: ';
+
+  private initialized: boolean = false;
+
   constructor() {
     super();
     this.id = ChatWidget.ID;
     this.title.label = ChatWidget.LABEL;
     this.title.iconClass = 'chat-tab-icon';
-    this.title.closable = false; // Make chat panel always visible
+    this.title.closable = false;
     this.addClass('chat-widget-container');
-    // Don't set fixed width here - let it be resizable
-    // Only set initial width when first opened/activated
   }
 
   @postConstruct()
   protected init(): void {
-    // Subscribe to serial monitor stream to maintain a lightweight rolling buffer for context
+    // Set up event listeners synchronously - no async operations here
+    this.setupEventListeners();
+  }
+
+  /**
+   * Set up event listeners for serial monitor and editor changes.
+   */
+  private setupEventListeners(): void {
+    // Subscribe to serial monitor stream to maintain a rolling buffer for context
     this.toDispose.push(
       this.monitorManagerProxy.onMessagesReceived(({ messages }) => {
         this.serialMonitorBuffer.push(...messages);
-        // Truncate buffer based on total chars
-        let total = this.serialMonitorBuffer.reduce((acc, m) => acc + m.length, 0);
-        if (total > ChatWidget.SERIAL_BUFFER_MAX_CHARS) {
-          // Remove from the start until under the limit
-          while (this.serialMonitorBuffer.length && total > ChatWidget.SERIAL_BUFFER_MAX_CHARS) {
-            const removed = this.serialMonitorBuffer.shift() || '';
-            total -= removed.length;
-          }
-        }
+        this.truncateSerialBuffer();
       })
     );
-    // Check if API key is configured
-    const apiKey = this.preferences['arduino.chat.geminiApiKey'];
-    if (!apiKey) {
-      this.addMessage({
-        id: 'welcome',
-        role: 'assistant',
-        content: 'Welcome! Please configure your Gemini API key in the settings (click the gear icon) to start using the AI assistant.',
+
+    // Subscribe to editor changes to detect project switches
+    this.toDispose.push(
+      this.editorManager.onCurrentEditorChanged(async () => {
+        await this.loadProjectHistory();
+        this.update();
+      })
+    );
+  }
+
+  /**
+   * Truncate serial monitor buffer to stay within character limit.
+   */
+  private truncateSerialBuffer(): void {
+    let total = this.serialMonitorBuffer.reduce((acc, m) => acc + m.length, 0);
+    if (total > ChatWidget.SERIAL_BUFFER_MAX_CHARS) {
+      while (this.serialMonitorBuffer.length && total > ChatWidget.SERIAL_BUFFER_MAX_CHARS) {
+        const removed = this.serialMonitorBuffer.shift() || '';
+        total -= removed.length;
+      }
+    }
+  }
+
+  /**
+   * Load chat history for the current project.
+   * Only loads history for saved project folders (not temp/unsaved sketches).
+   */
+  private async loadProjectHistory(): Promise<void> {
+    try {
+      // Get current project root from active sketch (only for saved projects)
+      const projectRoot = await this.getCurrentProjectRoot();
+      
+      if (!projectRoot) {
+        // No saved project open - clear state but keep chat interface available
+        this.chatHistoryService.clearState();
+        this.currentProjectRoot = undefined;
+        this.activeThreadId = undefined;
+        this.threads = [];
+        
+        // Only clear messages if we had a project before (project was closed)
+        // Don't clear if we're just starting up or have a temp sketch
+        if (this.currentProjectRoot !== undefined) {
+          this.messages = [];
+        }
+        
+        // Show welcome message if no messages
+        if (this.messages.length === 0) {
+          this.showWelcomeMessage();
+        }
+        
+        this.update();
+        return;
+      }
+
+      // If project changed, clear current state
+      if (this.currentProjectRoot !== projectRoot) {
+        this.chatHistoryService.clearState();
+        this.messages = [];
+        this.activeThreadId = undefined;
+      }
+
+      this.currentProjectRoot = projectRoot;
+
+      // Load threads for this saved project
+      const threadSummaries = await this.chatHistoryService.listThreads(projectRoot);
+      this.threads = threadSummaries
+        .filter(t => t.status === 'active')
+        .map(t => ({ id: t.id, title: t.title, updatedAt: t.updatedAt }));
+
+      // Load the most recent active thread, or show welcome if no threads
+      if (this.threads.length > 0 && !this.activeThreadId) {
+        const mostRecent = this.threads[0];
+        await this.switchToThread(mostRecent.id);
+      } else if (this.threads.length === 0 && this.messages.length === 0) {
+        // No threads yet, show welcome message
+        this.showWelcomeMessage();
+      }
+
+      this.update();
+    } catch (error) {
+      console.warn('Failed to load project chat history:', error);
+    }
+  }
+
+  /**
+   * Get the current project root from the active sketch.
+   * Returns undefined if no sketch, or if sketch is temporary (unsaved).
+   * Only returns a path for saved project folders.
+   */
+  private async getCurrentProjectRoot(): Promise<string | undefined> {
+    try {
+      const currentEditor = this.editorManager.currentEditor;
+      if (currentEditor) {
+        const sketch = await this.sketchesService.maybeLoadSketch(currentEditor.editor.uri.toString());
+        if (sketch) {
+          // Only return project root if it's a saved project (not temp)
+          const isTemp = await this.sketchesService.isTemp(sketch);
+          if (!isTemp) {
+            return FileUri.fsPath(sketch.uri);
+          }
+        }
+      }
+      return undefined;
+    } catch (error) {
+      console.warn('Failed to get project root:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Switch to a different thread.
+   */
+  private async switchToThread(threadId: string): Promise<void> {
+    if (!this.currentProjectRoot) {
+      return;
+    }
+
+    try {
+      const thread = await this.chatHistoryService.loadThread(this.currentProjectRoot, threadId);
+      this.activeThreadId = threadId;
+
+      // Convert thread messages to widget messages
+      this.messages = thread.messages.map((msg): ChatMessage => {
+        return {
+          id: msg.id,
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content,
+          timestamp: new Date(msg.createdAt),
+          codeBlocks: msg.metadata?.codeBlocks,
+        };
       });
-    } else {
+
+      // Add welcome message if empty
+      if (this.messages.length === 0) {
+        this.showWelcomeMessage();
+      }
+
+      this.update();
+    } catch (error) {
+      console.error(ChatWidget.ERROR_LOAD_THREAD, error);
+    }
+  }
+
+  /**
+   * Create a new thread and switch to it.
+   */
+  private async createNewThread(): Promise<void> {
+    // Only create thread if we have a saved project
+    if (!this.currentProjectRoot) {
+      const projectRoot = await this.getCurrentProjectRoot();
+      if (!projectRoot) {
+        // No saved project - just clear messages and show welcome
+        // Don't show error, just allow chatting without saving history
+        this.messages = [];
+        this.activeThreadId = undefined;
+        this.showWelcomeMessage();
+        this.update();
+        return;
+      }
+      this.currentProjectRoot = projectRoot;
+    }
+
+    try {
+      const thread = await this.chatHistoryService.createThread(this.currentProjectRoot);
+      this.activeThreadId = thread.id;
+      this.messages = [];
+      this.showWelcomeMessage();
+      await this.loadProjectHistory();
+      this.update();
+    } catch (error) {
+      console.error('Failed to create thread:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       this.addMessage({
-        id: 'welcome',
+        id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
         role: 'assistant',
-        content: 'Hello! I\'m your AI assistant. How can I help you today?',
+        content: `${ChatWidget.ERROR_CREATE_THREAD_PREFIX}${errorMessage}`,
       });
     }
   }
 
   protected override onAfterAttach(msg: Message): void {
     super.onAfterAttach(msg);
-    // Don't set fixed width here - allow resizing
+    // Initialize async operations after widget is attached
+    this.initializeAsync().catch(error => {
+      console.error('Failed to initialize chat widget:', error);
+    });
   }
 
   protected override onActivateRequest(msg: Message): void {
     super.onActivateRequest(msg);
     this.node.focus();
-    // Set initial width only when first activated (user clicks on AI Chat or chat icon)
+    this.setInitialWidth();
+  }
+
+  protected override async onAfterShow(msg: Message): Promise<void> {
+    super.onAfterShow(msg);
+    this.setInitialWidth();
+    // Reload project history when widget is shown (in case project changed while hidden)
+    await this.loadProjectHistory();
+    this.scrollToBottom();
+  }
+
+  /**
+   * Initialize async operations (load history, show welcome message).
+   */
+  private async initializeAsync(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+
+    try {
+      await this.loadProjectHistory();
+      this.showWelcomeMessage();
+      this.initialized = true;
+    } catch (error) {
+      console.error('Failed to initialize chat widget:', error);
+    }
+  }
+
+  /**
+   * Set initial width for the widget if not already set.
+   */
+  private setInitialWidth(): void {
     if (!this.initialWidthSet && !this.hasBeenManuallyResized) {
-      this.node.style.width = '420px';
-      this.node.style.minWidth = '350px'; // Allow minimum resizing
-      this.node.style.maxWidth = 'none'; // Allow maximum resizing
+      this.node.style.width = ChatWidget.INITIAL_WIDTH;
+      this.node.style.minWidth = ChatWidget.MIN_WIDTH;
+      this.node.style.maxWidth = 'none';
       this.initialWidthSet = true;
     }
   }
 
-  protected override onAfterShow(msg: Message): void {
-    super.onAfterShow(msg);
-    // Set initial width only when first shown (user clicks on AI Chat or chat icon)
-    if (!this.initialWidthSet && !this.hasBeenManuallyResized) {
-      this.node.style.width = '420px';
-      this.node.style.minWidth = '350px'; // Allow minimum resizing
-      this.node.style.maxWidth = 'none'; // Allow maximum resizing
-      this.initialWidthSet = true;
+  /**
+   * Show welcome message based on API key configuration.
+   */
+  private showWelcomeMessage(): void {
+    // Only show welcome if no messages exist
+    if (this.messages.length > 0) {
+      return;
     }
-    this.scrollToBottom();
+
+    const apiKey = this.preferences['arduino.chat.geminiApiKey'];
+    this.addMessage({
+      id: ChatWidget.WELCOME_MESSAGE_ID,
+      role: 'assistant',
+      content: apiKey ? ChatWidget.WELCOME_WITH_API_KEY : ChatWidget.WELCOME_NO_API_KEY,
+    });
   }
 
   private addMessage(message: Omit<ChatMessage, 'timestamp'>): void {
@@ -222,12 +453,58 @@ export class ChatWidget extends ReactWidget {
     }
     this.update(); // re-render to update send button disabled state and messages list
 
-    // Add user message
-    this.addMessage({
-      id: `user-${Date.now()}`,
+    // Check if we have a saved project (for history persistence)
+    const projectRoot = await this.getCurrentProjectRoot();
+    const hasSavedProject = !!projectRoot;
+    
+    // Update current project root if we have one
+    if (hasSavedProject && this.currentProjectRoot !== projectRoot) {
+      this.currentProjectRoot = projectRoot;
+    }
+
+    // Only create/load thread if we have a saved project
+    // For temp sketches, just chat without saving history
+    if (hasSavedProject && !this.activeThreadId) {
+      try {
+        const thread = await this.chatHistoryService.createThread(this.currentProjectRoot!);
+        this.activeThreadId = thread.id;
+        // Clear welcome message if it exists
+        this.messages = this.messages.filter(m => m.id !== ChatWidget.WELCOME_MESSAGE_ID);
+        await this.loadProjectHistory();
+      } catch (error) {
+        console.error('Failed to create thread:', error);
+        // Don't block chatting if thread creation fails
+        // Just continue without saving history
+      }
+    }
+
+    // Create user message for history
+    const userMessageForHistory: import('../../../common/protocol/chat-history-service').ChatMessage = {
+      id: `${ChatWidget.USER_MESSAGE_ID_PREFIX}-${Date.now()}`,
       role: 'user',
       content: userMessage,
-    });
+      createdAt: new Date().toISOString(),
+    };
+
+      // Add user message to UI
+      this.addMessage({
+        id: userMessageForHistory.id,
+        role: 'user',
+        content: userMessage,
+      });
+
+      // Save to thread only if we have a saved project
+    if (this.currentProjectRoot && this.activeThreadId) {
+      try {
+        await this.chatHistoryService.appendMessage(
+          this.currentProjectRoot,
+          this.activeThreadId,
+          userMessageForHistory
+        );
+      } catch (error) {
+        console.warn('Failed to save user message to thread:', error);
+      }
+    }
 
     this.isProcessing = true;
     this.update();
@@ -242,20 +519,45 @@ export class ChatWidget extends ReactWidget {
       // Extract code blocks from response
       const codeBlocks = extractExplicitCodeBlocks(response);
 
-      // Add assistant response
+      // Create assistant message for history
+      const assistantMessageForHistory: import('../../../common/protocol/chat-history-service').ChatMessage = {
+        id: `${ChatWidget.ASSISTANT_MESSAGE_ID_PREFIX}-${Date.now()}`,
+        role: 'assistant',
+        content: response,
+        createdAt: new Date().toISOString(),
+        metadata: {
+          codeBlocks: codeBlocks.length > 0 ? codeBlocks : undefined,
+        },
+      };
+
+      // Add assistant response to UI
       // Always include codeBlocks array if any were found, even if empty after filtering
       // This ensures buttons appear when corrections are suggested
       this.addMessage({
-        id: `assistant-${Date.now()}`,
+        id: assistantMessageForHistory.id,
         role: 'assistant',
         content: response,
         codeBlocks: codeBlocks.length > 0 ? codeBlocks : undefined,
       });
+
+      // Save to thread only if we have a saved project
+      if (this.currentProjectRoot && this.activeThreadId) {
+        try {
+          await this.chatHistoryService.appendMessage(
+            this.currentProjectRoot,
+            this.activeThreadId,
+            assistantMessageForHistory
+          );
+        } catch (error) {
+          console.warn('Failed to save assistant message to thread:', error);
+        }
+      }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get response';
       this.addMessage({
-        id: `error-${Date.now()}`,
+        id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
         role: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
+        content: `Error: ${errorMessage}`,
       });
     } finally {
       this.isProcessing = false;
@@ -382,9 +684,10 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
       },
     ];
 
-    // Add chat history (excluding welcome messages and error messages)
+    // Add chat history from the active thread (excluding welcome messages and error messages)
+    // The messages array already contains the thread history loaded from disk
     const historyMessages = this.messages.filter(
-      msg => msg.id !== 'welcome' && 
+      msg => msg.id !== ChatWidget.WELCOME_MESSAGE_ID && 
              !msg.content.includes('Welcome') && 
              !msg.content.includes('Chat cleared') &&
              !(msg.role === 'assistant' && msg.content.startsWith('Error:'))
@@ -494,13 +797,9 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
     }
   }
 
-  private handleClear = (): void => {
-    this.messages = [];
-    this.addMessage({
-      id: 'welcome',
-      role: 'assistant',
-      content: 'Chat cleared. How can I help you?',
-    });
+  private handleClear = async (): Promise<void> => {
+    // Create a new thread instead of clearing (preserves history)
+    await this.createNewThread();
   };
 
   private handleOpenSettings = (): void => {
@@ -561,9 +860,9 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
       const activeEditor = this.editorManager.currentEditor;
       if (!activeEditor) {
         this.addMessage({
-          id: `error-${Date.now()}`,
+          id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
           role: 'assistant',
-          content: 'Error: No active editor to apply the fix.',
+          content: ChatWidget.ERROR_NO_EDITOR,
         });
         return;
       }
@@ -719,9 +1018,9 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
         // The editor models are synced above to prevent dialogs
 
         this.addMessage({
-          id: `success-${Date.now()}`,
+          id: `${ChatWidget.SUCCESS_MESSAGE_ID_PREFIX}-${Date.now()}`,
           role: 'assistant',
-          content: result.message || '⚡ Fix applied and file(s) saved.',
+          content: result.message || ChatWidget.SUCCESS_FIX_APPLIED,
         });
 
         // Automatically check for missing libraries if code contains #include
@@ -736,7 +1035,7 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
             
             if (libraryResult.success && libraryResult.data?.librariesInstalled > 0) {
               this.addMessage({
-                id: `library-${Date.now()}`,
+                id: `${ChatWidget.LIBRARY_MESSAGE_ID_PREFIX}-${Date.now()}`,
                 role: 'assistant',
                 content: libraryResult.message || '✅ Libraries checked and installed',
               });
@@ -753,18 +1052,19 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
         let compilationSuccessful = false;
         try {
           this.addMessage({
-            id: `info-${Date.now()}`,
+            id: `${ChatWidget.INFO_MESSAGE_ID_PREFIX}-${Date.now()}`,
             role: 'assistant',
-            content: '🛠️ Verifying the sketch...',
+            content: ChatWidget.INFO_VERIFYING,
           });
           await this.commandService.executeCommand('arduino-verify-sketch');
           compilationSuccessful = true;
         } catch (e) {
           // The verify command itself will surface errors in the Output; we only annotate the chat.
+          const errorMessage = e instanceof Error ? e.message : String(e);
           this.addMessage({
-            id: `error-${Date.now()}`,
+            id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
             role: 'assistant',
-            content: `Verification failed to start: ${e instanceof Error ? e.message : String(e)}`,
+            content: `${ChatWidget.ERROR_VERIFY_FAILED}${errorMessage}`,
           });
         }
 
@@ -820,29 +1120,60 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
         const errorMessage = result.errors && result.errors.length > 0
           ? result.errors.join('\n')
           : 'Failed to apply fix';
-        this.addMessage({
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: `Error: ${errorMessage}`,
-        });
+                this.addMessage({
+                  id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
+                  role: 'assistant',
+                  content: `Error: ${errorMessage}`,
+                });
       }
     } catch (error) {
-      this.addMessage({
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: `Error applying fix: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.addMessage({
+          id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
+          role: 'assistant',
+          content: `${ChatWidget.ERROR_APPLY_FIX}${errorMessage}`,
+        });
     }
   };
 
   protected render(): React.ReactElement {
     const apiKey = this.preferences['arduino.chat.geminiApiKey'];
+    const hasProject = !!this.currentProjectRoot;
 
     return (
       <div className="chat-widget">
         <div className="chat-header">
-          <h3>{ChatWidget.LABEL}</h3>
+          <div className="chat-header-title">
+            <h3>{ChatWidget.LABEL}</h3>
+            {this.threads.length > 0 && (
+              <select
+                className="chat-thread-selector"
+                value={this.activeThreadId || ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    this.switchToThread(e.target.value);
+                  }
+                }}
+                title="Select chat thread"
+              >
+                {this.threads.map(thread => (
+                  <option key={thread.id} value={thread.id}>
+                    {thread.title}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="chat-header-actions">
+            {this.currentProjectRoot && (
+              <button
+                className="theia-button secondary chat-new-thread-button"
+                onClick={() => this.createNewThread()}
+                title="New chat"
+              >
+                New Chat
+              </button>
+            )}
             <div
               className="chat-info-icon"
               onClick={() => {
@@ -1098,7 +1429,7 @@ REPLACE-WITH:
         <div className="chat-input-container">
           <textarea
             className="chat-input"
-            placeholder="Ask me anything about development..."
+            placeholder={hasProject ? "Ask me anything about development..." : "Ask me anything... (Chat history will be saved when you open a project folder)"}
             ref={this.inputRef}
             defaultValue={this.inputValue}
             onChange={this.handleInputChange}

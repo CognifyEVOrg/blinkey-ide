@@ -14,17 +14,17 @@ This document summarizes the changes made to convert this repository from a dire
 
 #### `package.json` (Root)
 - **Name**: Changed from `arduino-ide` to `cognifyev-arduino-ide`
-- **Description**: Updated to "CognifyEV AI-Powered Arduino IDE - An agentic IDE for embedded computers"
+- **Description**: Updated to "Blinky AI-Powered Arduino IDE - An agentic IDE for embedded computers"
 - **Repository**: Updated to point to `https://github.com/CognifyEVOrg/arduino-ide.git`
-- **Author**: Changed from "Arduino SA" to "CognifyEV"
+- **Author**: Changed from "Arduino SA" to "Blinky"
 
 #### `arduino-ide-extension/package.json`
 - **Name**: Changed from `arduino-ide-extension` to `cognifyev-arduino-ide-extension`
 - **Description**: Updated to reflect CognifyEV branding
 
 #### `electron-app/package.json`
-- **Author**: Changed from "Arduino SA" to "CognifyEV"
-- **Description**: Updated to "CognifyEV AI-Powered Arduino IDE"
+- **Author**: Changed from "Arduino SA" to "Blinky"
+- **Description**: Updated to "Blinky AI-Powered IDE"
 
 ### 2. Documentation Updates
 

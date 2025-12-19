@@ -17,6 +17,10 @@ export class PreferenceMonacoSyncContribution implements FrontendApplicationCont
   protected readonly settingsService!: SettingsService;
 
   onStart(): void {
+    // Apply existing preferences at startup so persisted font settings
+    // take effect even before the user opens the Settings dialog.
+    this.applyToAllEditors();
+
     // Listen to preference changes and apply to Monaco editors live
     this.preferences.onPreferenceChanged(({ preferenceName, newValue }) => {
       if (preferenceName === 'editor.fontFamily' || preferenceName === 'editor.fontSize') {
@@ -35,6 +39,16 @@ export class PreferenceMonacoSyncContribution implements FrontendApplicationCont
     try {
       const fontFamily = this.preferences.get<string>('editor.fontFamily');
       const fontSize = this.preferences.get<number>('editor.fontSize');
+
+      // Also propagate the font family to a CSS variable used in editor.css
+      // so all Monaco DOM nodes inherit the correct font even if Monaco's
+      // internal configuration is cached.
+      if (typeof fontFamily === 'string' && document?.documentElement) {
+        document.documentElement.style.setProperty(
+          '--blinky-editor-font-family',
+          fontFamily
+        );
+      }
 
       for (const widget of this.editorManager.all) {
         const editor = widget.editor;

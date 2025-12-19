@@ -76,6 +76,11 @@ import { MonitorViewContribution } from './serial/monitor/monitor-view-contribut
 import { ChatWidget } from './widgets/chat/chat-widget';
 import { ChatViewContribution } from './widgets/chat/chat-view-contribution';
 import { AgentRegistry } from './widgets/chat/agent-registry';
+import { ChatHistoryServiceClient } from './widgets/chat/chat-history-service';
+import {
+  ChatHistoryService,
+  ChatHistoryServicePath,
+} from '../common/protocol/chat-history-service';
 import { InlineEditingAgent } from './widgets/chat/agents/inline-editing-agent';
 import { MultiFileEditingAgent } from './widgets/chat/agents/multi-file-editing-agent';
 import { LibraryManagementAgent } from './widgets/chat/agents/library-management-agent';
@@ -466,6 +471,17 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(ConfigServiceClient).toSelf().inSingletonScope();
   bind(FrontendApplicationContribution).toService(ConfigServiceClient);
 
+  // Chat history service
+  bind(ChatHistoryService)
+    .toDynamicValue((context) =>
+      WebSocketConnectionProvider.createProxy(
+        context.container,
+        ChatHistoryServicePath
+      )
+    )
+    .inSingletonScope();
+  bind(ChatHistoryServiceClient).toSelf().inSingletonScope();
+
   // Boards service
   bind(BoardsService)
     .toDynamicValue((context) =>
@@ -573,6 +589,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(AgentRegistry).toSelf().inSingletonScope();
   bind(ChatWidget).toSelf();
   bindViewContribution(bind, ChatViewContribution);
+  bind(FrontendApplicationContribution).toService(ChatViewContribution);
   bind(WidgetFactory).toDynamicValue((context) => ({
     id: ChatWidget.ID,
     createWidget: () => context.container.get(ChatWidget),
