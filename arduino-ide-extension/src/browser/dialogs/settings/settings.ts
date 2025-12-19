@@ -162,7 +162,7 @@ export class SettingsService {
       this.preferenceService.get<number>(FONT_SIZE_SETTING, 12),
       this.preferenceService.get<string>(
         FONT_FAMILY_SETTING,
-        "'Courier New', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace"
+        "'JetBrains Mono', 'Fira Code', 'Source Code Pro', monospace"
       ),
       this.preferenceService.get<string>(
         'workbench.colorTheme',

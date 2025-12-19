@@ -18,6 +18,31 @@
     font-display: block;
 }
 
+/* Bundled editor fonts */
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("fonts/JetBrainsMono-Regular.woff") format("woff");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Fira Code";
+    src: url("fonts/FiraCode-Regular.woff") format("woff");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Source Code Pro";
+    src: url("fonts/SourceCodePro-Regular.woff") format("woff");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
 .fa {
     /* use !important to prevent issues with browser extensions that change fonts */
     font-family: "FontAwesome" !important;

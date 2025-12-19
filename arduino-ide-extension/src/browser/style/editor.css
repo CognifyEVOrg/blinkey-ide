@@ -14,3 +14,13 @@
     background-color: var(--theia-inputValidation-errorBackground);
     opacity: 0.4 !important;
 }
+
+/* Blinky: allow dynamic editor font via CSS variable set from preferences. */
+:root {
+    --blinky-editor-font-family: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', monospace;
+}
+
+.monaco-editor,
+.monaco-editor * {
+    font-family: var(--blinky-editor-font-family) !important;
+}

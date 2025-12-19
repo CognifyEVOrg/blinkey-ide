@@ -53,7 +53,7 @@ export const IDEUpdaterComponent = ({
       <div>
         {nls.localize(
           'arduino/ide-updater/versionDownloaded',
-          'Cognify IDE {0} has been downloaded.',
+          'Blinky IDE {0} has been downloaded.',
           version
         )}
       </div>
@@ -71,7 +71,7 @@ export const IDEUpdaterComponent = ({
       <div>
         {nls.localize(
           'arduino/ide-updater/downloadingNotice',
-          'Downloading the latest version of Cognify IDE.'
+          'Downloading the latest version of Blinky IDE.'
         )}
       </div>
       <ProgressBar percent={progressInfo?.percent} showPercentage />
@@ -95,7 +95,7 @@ export const IDEUpdaterComponent = ({
         <div className="dialogRow">
           {nls.localize(
             'arduino/ide-updater/newVersionAvailable',
-            'A new version of Cognify IDE ({0}) is available for download.',
+            'A new version of Blinky IDE ({0}) is available for download.',
             version
           )}
         </div>
@@ -133,7 +133,7 @@ export const IDEUpdaterComponent = ({
       <div>
         {nls.localize(
           'arduino/ide-updater/goToDownloadPage',
-          "An update for Cognify IDE is available, but we're not able to download and install it automatically. Please go to the download page and download the latest version from there."
+          "An update for Blinky IDE is available, but we're not able to download and install it automatically. Please go to the download page and download the latest version from there."
         )}
       </div>
     </div>

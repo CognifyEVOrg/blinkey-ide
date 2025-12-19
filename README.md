@@ -1,6 +1,6 @@
 <img src="https://content.arduino.cc/website/Arduino_logo_teal.svg" height="100" align="right" />
 
-# CognifyEV AI-Powered Arduino IDE
+# Blinky AI-Powered Arduino IDE
 
 > **⚠️ This is a fork of [Arduino IDE 2.x](https://github.com/arduino/arduino-ide)** - An AI-powered agentic IDE for embedded computers, built upon the excellent foundation of the Arduino IDE 2.x.
 

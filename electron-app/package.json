@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "electron-app",
-  "version": "2.3.7",
+  "version": "1.0.0",
   "license": "AGPL-3.0-or-later",
   "main": "./src-gen/backend/electron-main.js",
   "dependencies": {
@@ -19,7 +19,7 @@
     "@theia/preferences": "1.57.0",
     "@theia/terminal": "1.57.0",
     "@theia/workspace": "1.57.0",
-    "cognifyev-arduino-ide-extension": "2.3.7"
+    "cognifyev-arduino-ide-extension": "1.0.0"
   },
   "devDependencies": {
     "@theia/cli": "1.57.0",
@@ -59,7 +59,7 @@
     "target": "electron",
     "frontend": {
       "config": {
-        "applicationName": "Cognify IDE",
+  "applicationName": "Blinky IDE",
         "defaultTheme": {
           "light": "arduino-theme",
           "dark": "arduino-theme-dark"
@@ -68,13 +68,13 @@
         "validatePreferencesSchema": false,
         "electron": {
           "showWindowEarly": true,
-          "uriScheme": "cognify-ide"
+          "uriScheme": "blinky-ide"
         },
         "reloadOnReconnect": true,
         "preferences": {
           "window.title": "${rootName}${activeEditorShort}${appName}",
           "files.autoSave": "afterDelay",
-          "editor.fontFamily": "'Courier New', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+          "editor.fontFamily": "'JetBrains Mono', 'Fira Code', 'Source Code Pro', monospace",
           "editor.minimap.enabled": false,
           "editor.tabSize": 2,
           "editor.scrollBeyondLastLine": false,
@@ -93,7 +93,7 @@
     },
     "backend": {
       "config": {
-        "configDirName": ".cognifyIDE",
+  "configDirName": ".blinkyIDE",
         "singleInstance": true
       }
     },
@@ -103,11 +103,11 @@
       }
     }
   },
-  "author": "CognifyEV",
-  "description": "Cognify AI-Powered IDE",
+  "author": "Blinky",
+  "description": "Blinky AI-Powered IDE",
   "build": {
-    "appId": "cc.cognifyev.ide",
-    "productName": "Cognify IDE",
+  "appId": "cc.blinky.ide",
+  "productName": "Blinky IDE",
     "asar": false,
     "detectUpdateChannel": false,
     "generateUpdatesFilesForAllChannels": true,
@@ -126,7 +126,12 @@
       "src-gen",
       "lib",
       "resources/icons/**/*",
-      "!**node_modules/**"
+      "!**node_modules/**",
+      "!../docs/**",
+      "!../BUILDING.md",
+      "!../DEV_SETUP.md",
+      "!../FORK_SETUP.md",
+      "!../excluded_files/**"
     ],
     "extraResources": [
       {
@@ -191,13 +196,7 @@
       ]
     },
     "afterSign": "scripts/notarize.js",
-    "publish": [
-      {
-        "provider": "s3",
-        "bucket": "arduino-downloads-prod-beagle",
-        "path": "arduino-ide/nightly"
-      }
-    ]
+    "publish": []
   },
   "theiaPluginsDir": "plugins",
   "theiaPlugins": {

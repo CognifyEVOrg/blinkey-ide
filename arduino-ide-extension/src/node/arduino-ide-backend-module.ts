@@ -121,6 +121,11 @@ import {
 import { SettingsReader } from './settings-reader';
 import { VsCodePluginScanner } from './theia/plugin-ext-vscode/scanner-vscode';
 import { rebindParcelFileSystemWatcher } from './theia/filesystem/parcel-bindings';
+import { ChatHistoryServiceImpl } from './chat/chat-history-service-impl';
+import {
+  ChatHistoryService,
+  ChatHistoryServicePath,
+} from '../common/protocol/chat-history-service';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(BackendApplication).toSelf().inSingletonScope();
@@ -204,6 +209,18 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
       (context) =>
         new JsonRpcConnectionHandler(SketchesServicePath, () =>
           context.container.get(SketchesService)
+        )
+    )
+    .inSingletonScope();
+
+  // Chat history service
+  bind(ChatHistoryServiceImpl).toSelf().inSingletonScope();
+  bind(ChatHistoryService).toService(ChatHistoryServiceImpl);
+  bind(ConnectionHandler)
+    .toDynamicValue(
+      (context) =>
+        new JsonRpcConnectionHandler(ChatHistoryServicePath, () =>
+          context.container.get(ChatHistoryService)
         )
     )
     .inSingletonScope();
@@ -346,6 +363,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     'sketches-service', // For creating, loading, and cloning sketches
     MonitorManagerName, // Logger for the monitor manager and its services
     MonitorServiceName,
+    'chat-history-service', // Logger for chat history service
   ].forEach((name) => bindChildLogger(bind, name));
 
   // Cloud sketchbook bindings

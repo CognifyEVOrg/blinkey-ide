@@ -8,6 +8,7 @@ import {
 } from '@theia/core/lib/browser';
 import { CommandRegistry, Command } from '@theia/core/lib/common/command';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
+import { EditorManager } from '@theia/editor/lib/browser/editor-manager';
 import { ChatWidget, chatWidgetLabel } from './chat-widget';
 
 export namespace ChatCommands {
@@ -25,6 +26,9 @@ export class ChatViewContribution extends AbstractViewContribution<ChatWidget>
 
   @inject(FrontendApplicationStateService)
   protected readonly appStateService: FrontendApplicationStateService;
+
+  @inject(EditorManager)
+  protected readonly editorManager: EditorManager;
 
   constructor() {
     super({
@@ -49,8 +53,16 @@ export class ChatViewContribution extends AbstractViewContribution<ChatWidget>
     this.appStateService.reachedState('ready').then(() => {
       // Create the widget immediately so the sidebar icon appears right away.
       // We use openView with reveal:false to create the widget without showing it yet.
-      this.openView({ activate: false, reveal: false }).catch(() => {
-        // Ignore errors - widget will be created in initializeLayout if needed
+      this.openView({ activate: false, reveal: false }).catch((err) => {
+        console.warn('Failed to create chat widget on startup:', err);
+      });
+    });
+
+    // Listen for editor changes to refresh chat context
+    this.editorManager.onCreated(() => {
+      // Editor created - ensure chat widget is available and can update context
+      this.openView({ activate: false, reveal: false }).catch((err) => {
+        console.warn('Failed to create chat widget on editor creation:', err);
       });
     });
   }
@@ -62,9 +74,13 @@ export class ChatViewContribution extends AbstractViewContribution<ChatWidget>
    * instances for each Electron window). This method is called for each new window.
    */
   async initializeLayout(): Promise<void> {
-    // Open and reveal the chat widget to ensure it's always visible on startup.
-    // The widget is set to non-closable, so it will always remain visible.
-    await this.openView({ activate: true, reveal: true });
+    // Always create the widget so the sidebar icon is visible
+    // The widget itself will handle showing appropriate messages when no project is open
+    try {
+      await this.openView({ activate: false, reveal: false });
+    } catch (err) {
+      console.warn('Failed to initialize chat widget layout:', err);
+    }
   }
 
   /**
@@ -72,13 +88,40 @@ export class ChatViewContribution extends AbstractViewContribution<ChatWidget>
    */
   override registerCommands(registry: CommandRegistry): void {
     super.registerCommands(registry);
-    // Explicitly register the toggle command to ensure it appears in shortcuts
-    // Since the chat widget is non-closable, toggle just opens/reveals it
-    registry.registerCommand(ChatCommands.TOGGLE, {
-      execute: () => this.openView({ activate: true, reveal: true }),
-      isEnabled: () => true,
-      isVisible: () => true,
-    });
+    // The toggle command is already registered by AbstractViewContribution
+    // We just need to ensure it's always enabled
+    if (this.toggleCommand) {
+      registry.registerCommand(this.toggleCommand, {
+        execute: () => this.toggle(),
+      });
+    }
+  }
+
+  /**
+   * Toggle the chat widget - open if closed, close if open.
+   */
+  protected async toggle(): Promise<void> {
+    console.log('[ChatViewContribution] toggle() called');
+    const widget = this.tryGetWidget();
+    console.log('[ChatViewContribution] tryGetWidget() returned:', widget ? 'widget exists' : 'no widget');
+    if (widget) {
+      // Widget exists - toggle visibility
+      console.log('[ChatViewContribution] Widget exists, isVisible:', widget.isVisible);
+      if (widget.isVisible) {
+        widget.hide();
+      } else {
+        await this.openView({ activate: true, reveal: true });
+      }
+    } else {
+      // Widget doesn't exist - create and open it
+      console.log('[ChatViewContribution] Widget does not exist, opening...');
+      try {
+        const openedWidget = await this.openView({ activate: true, reveal: true });
+        console.log('[ChatViewContribution] openView() returned:', openedWidget ? 'widget opened' : 'no widget');
+      } catch (error) {
+        console.error('[ChatViewContribution] Failed to open chat widget:', error);
+      }
+    }
   }
 
   // Note: Keybinding is automatically registered by AbstractViewContribution

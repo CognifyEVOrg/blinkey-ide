@@ -1,12 +1,12 @@
 {
   "name": "cognifyev-arduino-ide",
-  "version": "2.3.7",
-  "description": "CognifyEV AI-Powered Arduino IDE - An agentic IDE for embedded computers",
+  "version": "1.0.0",
+  "description": "Blinky AI-Powered Arduino IDE - An agentic IDE for embedded computers",
   "repository": {
     "type": "git",
     "url": "https://github.com/CognifyEVOrg/arduino-ide.git"
   },
-  "author": "CognifyEV",
+  "author": "Blinky",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "engines": {
@@ -40,7 +40,7 @@
     "js-yaml": "4.1.0",
     "lerna": "^7.1.4",
     "lint-staged": "^11.0.0",
-    "node-fetch": "^2.6.1",
+    "node-fetch": "^2.6.11",
     "node-gyp": "^9.3.0",
     "prettier": "^2.3.1",
     "reflect-metadata": "^0.1.10",
@@ -83,5 +83,10 @@
   "workspaces": [
     "arduino-ide-extension",
     "electron-app"
-  ]
+  ],
+  "dependencies": {
+    "cpu-features": "^0.0.10",
+    "find-git-repositories": "^0.2.2",
+    "ssh2": "^1.17.0"
+  }
 }
