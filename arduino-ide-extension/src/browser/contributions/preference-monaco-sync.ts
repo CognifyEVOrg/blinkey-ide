@@ -45,7 +45,7 @@ export class PreferenceMonacoSyncContribution implements FrontendApplicationCont
       // internal configuration is cached.
       if (typeof fontFamily === 'string' && document?.documentElement) {
         document.documentElement.style.setProperty(
-          '--blinky-editor-font-family',
+          '--blinkey-editor-font-family',
           fontFamily
         );
       }

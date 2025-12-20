@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import os from 'node:os';
+import { isWindows } from '@theia/core/lib/common/os';
 import yaml from 'js-yaml';
 import { injectable, inject, named } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
@@ -225,7 +227,27 @@ export class ConfigServiceImpl
     ]);
 
     const config = JSON.parse(configRaw);
-    const { user, data } = JSON.parse(directoriesRaw);
+    let { user, data } = JSON.parse(directoriesRaw);
+
+    // Replace default Arduino sketchbook path with Blinkey (platform-aware)
+    const homeDir = os.homedir();
+    let defaultArduinoPath: string;
+    let blinkeyPath: string;
+    
+    if (isWindows) {
+      // Windows: Documents\Arduino -> Documents\Blinkey
+      defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
+      blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
+    } else {
+      // Linux/Mac: ~/Arduino -> ~/Blinkey
+      defaultArduinoPath = join(homeDir, 'Arduino');
+      blinkeyPath = join(homeDir, 'Blinkey');
+    }
+    
+    if (user === defaultArduinoPath) {
+      user = blinkeyPath;
+      this.logger.info(`Changed default sketchbook path from ${defaultArduinoPath} to ${blinkeyPath}`);
+    }
 
     return { ...config.config, directories: { user, data } };
   }
@@ -233,6 +255,34 @@ export class ConfigServiceImpl
   private async initCliConfigTo(fsPathToDir: string): Promise<void> {
     const cliPath = this.daemon.getExecPath();
     await spawnCommand(cliPath, ['config', 'init', '--dest-dir', fsPathToDir]);
+    
+    // After initializing, set the default sketchbook path to use "Blinkey" instead of "Arduino" (platform-aware)
+    const homeDir = os.homedir();
+    let defaultArduinoPath: string;
+    let blinkeyPath: string;
+    
+    if (isWindows) {
+      // Windows: Documents\Arduino -> Documents\Blinkey
+      defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
+      blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
+    } else {
+      // Linux/Mac: ~/Arduino -> ~/Blinkey
+      defaultArduinoPath = join(homeDir, 'Arduino');
+      blinkeyPath = join(homeDir, 'Blinkey');
+    }
+    
+    // Check if the default Arduino path is set, and change it to Blinkey
+    try {
+      const directoriesRaw = await spawnCommand(cliPath, ['config', 'get', 'directories.user', '--json']);
+      const currentUserPath = JSON.parse(directoriesRaw);
+      if (currentUserPath === defaultArduinoPath) {
+        await spawnCommand(cliPath, ['config', 'set', 'directories.user', blinkeyPath]);
+        this.logger.info(`Set default sketchbook path to ${blinkeyPath} instead of ${defaultArduinoPath}`);
+      }
+    } catch (error) {
+      // If we can't read or set the config, log but don't fail
+      this.logger.warn('Could not set default Blinkey sketchbook path:', error);
+    }
   }
 
   private async mapCliConfigToAppConfig(

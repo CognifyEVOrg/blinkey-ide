@@ -26,7 +26,7 @@ export class VersionWelcomeDialog extends ReactDialog<void> {
     super({
       title: nls.localize(
         'arduino/versionWelcome/title',
-        'Welcome to a new version of Blinky IDE!'
+        'Welcome to a new version of Blinkey IDE!'
       ),
     });
     this.node.id = 'version-welcome-dialog-container';
@@ -91,7 +91,7 @@ export class VersionWelcomeDialog extends ReactDialog<void> {
       this.titleNode.innerText = sanitize(
           nls.localize(
           'arduino/versionWelcome/titleWithVersion',
-          'Welcome to the new Blinky IDE {0}!',
+          'Welcome to the new Blinkey IDE {0}!',
           appVersion
         )
       );

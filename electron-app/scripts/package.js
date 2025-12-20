@@ -102,7 +102,7 @@ async function getVersion() {
 async function getArtifactName(version) {
   const { platform, arch } = process;
   version = isNightly ? `nightly-${await timestamp()}` : version;
-  const name = 'arduino-ide';
+  const name = 'blinkey-ide';
   switch (platform) {
     case 'win32': {
       if (arch === 'x64') {

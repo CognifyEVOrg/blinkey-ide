@@ -1,4 +1,4 @@
-# Development Setup Guide for Blinky AI-Powered Arduino IDE
+# Development Setup Guide for Blinkey AI-Powered Arduino IDE
 
 This guide explains how to work with the Arduino CLI for extending the IDE with AI capabilities.
 

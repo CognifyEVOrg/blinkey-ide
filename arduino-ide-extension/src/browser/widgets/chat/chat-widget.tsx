@@ -111,6 +111,10 @@ export class ChatWidget extends ReactWidget {
   private currentProjectRoot: string | undefined;
   private activeThreadId: string | undefined;
   private threads: Array<{ id: string; title: string; updatedAt: string }> = [];
+  private isRenamingThread: boolean = false;
+  private threadNameInput: string = '';
+  // In-memory thread name for unsaved projects (not persisted)
+  private inMemoryThreadName: string | undefined;
 
   private static readonly WELCOME_MESSAGE_ID = 'welcome';
   private static readonly ERROR_MESSAGE_ID_PREFIX = 'error';
@@ -123,12 +127,11 @@ export class ChatWidget extends ReactWidget {
   private static readonly MIN_WIDTH = '350px';
   private static readonly WELCOME_NO_API_KEY = 'Welcome! Please configure your Gemini API key in the settings (click the gear icon) to start using the AI assistant.';
   private static readonly WELCOME_WITH_API_KEY = 'Hello! I\'m your AI assistant. How can I help you today?';
-  private static readonly ERROR_CREATE_THREAD_PREFIX = 'Failed to create chat thread: ';
   private static readonly ERROR_LOAD_THREAD = 'Failed to load thread: ';
   private static readonly ERROR_APPLY_FIX = 'Error applying fix: ';
   private static readonly ERROR_NO_EDITOR = 'Error: No active editor to apply the fix.';
-  private static readonly SUCCESS_FIX_APPLIED = '⚡ Fix applied and file(s) saved.';
-  private static readonly INFO_VERIFYING = '🛠️ Verifying the sketch...';
+  private static readonly SUCCESS_FIX_APPLIED = 'Fix applied and file(s) saved.';
+  private static readonly INFO_VERIFYING = 'Verifying the sketch...';
   private static readonly ERROR_VERIFY_FAILED = 'Verification failed to start: ';
 
   private initialized: boolean = false;
@@ -198,10 +201,11 @@ export class ChatWidget extends ReactWidget {
         this.activeThreadId = undefined;
         this.threads = [];
         
-        // Only clear messages if we had a project before (project was closed)
+        // Only clear messages and in-memory name if we had a project before (project was closed)
         // Don't clear if we're just starting up or have a temp sketch
         if (this.currentProjectRoot !== undefined) {
           this.messages = [];
+          this.inMemoryThreadName = undefined;
         }
         
         // Show welcome message if no messages
@@ -213,20 +217,26 @@ export class ChatWidget extends ReactWidget {
         return;
       }
 
-      // If project changed, clear current state
+      // If project changed, clear current state including in-memory name
       if (this.currentProjectRoot !== projectRoot) {
         this.chatHistoryService.clearState();
         this.messages = [];
         this.activeThreadId = undefined;
+        this.inMemoryThreadName = undefined;
       }
 
       this.currentProjectRoot = projectRoot;
 
       // Load threads for this saved project
+      // Show ALL active threads, even if they have the same name
       const threadSummaries = await this.chatHistoryService.listThreads(projectRoot);
       this.threads = threadSummaries
         .filter(t => t.status === 'active')
-        .map(t => ({ id: t.id, title: t.title, updatedAt: t.updatedAt }));
+        .map(t => ({ 
+          id: t.id, 
+          title: t.title || 'New Chat', 
+          updatedAt: t.updatedAt 
+        }));
 
       // Load the most recent active thread, or show welcome if no threads
       if (this.threads.length > 0 && !this.activeThreadId) {
@@ -304,40 +314,220 @@ export class ChatWidget extends ReactWidget {
 
   /**
    * Create a new thread and switch to it.
+   * Works for both saved projects (with history) and temp sketches (without history).
    */
   private async createNewThread(): Promise<void> {
-    // Only create thread if we have a saved project
-    if (!this.currentProjectRoot) {
-      const projectRoot = await this.getCurrentProjectRoot();
-      if (!projectRoot) {
+    console.log('[ChatWidget] createNewThread called');
+    
+    try {
+      // Try to get project root if we have a saved project
+      if (!this.currentProjectRoot) {
+        const projectRoot = await this.getCurrentProjectRoot();
+        if (projectRoot) {
+          this.currentProjectRoot = projectRoot;
+        }
+      }
+
+      // If we have a saved project, create a thread for history
+      if (this.currentProjectRoot) {
+        console.log('[ChatWidget] Creating thread for saved project:', this.currentProjectRoot);
+        try {
+          const thread = await this.chatHistoryService.createThread(this.currentProjectRoot);
+          this.activeThreadId = thread.id;
+          this.messages = [];
+          this.showWelcomeMessage();
+          await this.loadProjectHistory();
+          this.update();
+          console.log('[ChatWidget] Thread created successfully:', thread.id);
+        } catch (error) {
+          console.error('[ChatWidget] Failed to create thread:', error);
+          // Continue anyway - allow chatting without saving history
+          this.messages = [];
+          this.activeThreadId = undefined;
+          this.showWelcomeMessage();
+          this.update();
+        }
+      } else {
         // No saved project - just clear messages and show welcome
-        // Don't show error, just allow chatting without saving history
+        // Chat works but history won't be saved
+        console.log('[ChatWidget] No saved project, clearing messages');
         this.messages = [];
         this.activeThreadId = undefined;
+        this.inMemoryThreadName = undefined; // Clear in-memory name for new thread
         this.showWelcomeMessage();
         this.update();
-        return;
       }
-      this.currentProjectRoot = projectRoot;
-    }
-
-    try {
-      const thread = await this.chatHistoryService.createThread(this.currentProjectRoot);
-      this.activeThreadId = thread.id;
-      this.messages = [];
-      this.showWelcomeMessage();
-      await this.loadProjectHistory();
-      this.update();
     } catch (error) {
-      console.error('Failed to create thread:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.addMessage({
-        id: `${ChatWidget.ERROR_MESSAGE_ID_PREFIX}-${Date.now()}`,
-        role: 'assistant',
-        content: `${ChatWidget.ERROR_CREATE_THREAD_PREFIX}${errorMessage}`,
-      });
+      console.error('[ChatWidget] Error in createNewThread:', error);
+      // Fallback: just clear messages
+      this.messages = [];
+      this.activeThreadId = undefined;
+      this.showWelcomeMessage();
+      this.update();
     }
   }
+
+  /**
+   * Get the current thread name for display.
+   * For saved projects, returns the persisted thread name.
+   * For unsaved projects, returns the in-memory name if set, otherwise 'New Chat'.
+   */
+  private getCurrentThreadName(): string {
+    // For saved projects with active thread, use persisted name
+    if (this.activeThreadId && this.threads.length > 0) {
+      const thread = this.threads.find(t => t.id === this.activeThreadId);
+      if (thread) {
+        return thread.title;
+      }
+    }
+    // For unsaved projects, use in-memory name if set
+    if (!this.currentProjectRoot && this.inMemoryThreadName) {
+      return this.inMemoryThreadName;
+    }
+    return 'New Chat';
+  }
+
+  /**
+   * Start renaming the current thread.
+   * Works for both saved and unsaved projects.
+   * For saved projects: creates a thread if needed and persists the name.
+   * For unsaved projects: stores the name in memory.
+   */
+  private handleStartRenameThread = async (): Promise<void> => {
+    console.log('[ChatWidget] handleStartRenameThread called', {
+      currentProjectRoot: this.currentProjectRoot,
+      activeThreadId: this.activeThreadId,
+      threadsCount: this.threads.length,
+      isRenaming: this.isRenamingThread,
+      inMemoryThreadName: this.inMemoryThreadName
+    });
+
+    // Try to get project root if we don't have one (for saved projects)
+    if (!this.currentProjectRoot) {
+      const projectRoot = await this.getCurrentProjectRoot();
+      if (projectRoot) {
+        this.currentProjectRoot = projectRoot;
+        console.log('[ChatWidget] Got project root:', projectRoot);
+      } else {
+        // No saved project - this is fine, we'll use in-memory storage
+        console.log('[ChatWidget] No saved project, will use in-memory thread name');
+      }
+    }
+
+    // For saved projects: if we have a project but no active thread, create one first
+    if (this.currentProjectRoot && !this.activeThreadId) {
+      console.log('[ChatWidget] Saved project but no active thread, creating one...');
+      try {
+        const thread = await this.chatHistoryService.createThread(this.currentProjectRoot);
+        this.activeThreadId = thread.id;
+        // Refresh thread list but don't clear messages
+        const threadSummaries = await this.chatHistoryService.listThreads(this.currentProjectRoot);
+        this.threads = threadSummaries
+          .filter(t => t.status === 'active')
+          .map(t => ({ 
+            id: t.id, 
+            title: t.title || 'New Chat', 
+            updatedAt: t.updatedAt 
+          }));
+        console.log('[ChatWidget] Thread created:', thread.id, 'Title:', thread.title);
+      } catch (error) {
+        console.error('[ChatWidget] Failed to create thread for renaming:', error);
+        // Don't block renaming - allow in-memory name even if thread creation fails
+        console.log('[ChatWidget] Will use in-memory thread name instead');
+      }
+    }
+
+    // Allow renaming for both saved and unsaved projects
+    console.log('[ChatWidget] Starting rename mode, current name:', this.getCurrentThreadName());
+    this.isRenamingThread = true;
+    this.threadNameInput = this.getCurrentThreadName();
+    // Force update to show the input field
+    this.update();
+    
+    // Small delay to ensure the input is focused
+    setTimeout(() => {
+      const input = this.node.querySelector('.chat-thread-name-input') as HTMLInputElement;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 50);
+  };
+
+  /**
+   * Cancel renaming the thread.
+   */
+  private handleCancelRenameThread = (): void => {
+    this.isRenamingThread = false;
+    this.threadNameInput = '';
+    this.update();
+  };
+
+  /**
+   * Save the renamed thread.
+   * For saved projects: persists the name to disk.
+   * For unsaved projects: stores the name in memory.
+   */
+  private handleSaveRenameThread = async (): Promise<void> => {
+    console.log('[ChatWidget] handleSaveRenameThread called', {
+      activeThreadId: this.activeThreadId,
+      currentProjectRoot: this.currentProjectRoot,
+      newName: this.threadNameInput.trim()
+    });
+
+    const trimmedName = this.threadNameInput.trim();
+    if (!trimmedName) {
+      console.log('[ChatWidget] Empty thread name, cancelling');
+      this.handleCancelRenameThread();
+      return;
+    }
+
+    // For saved projects: persist the name
+    if (this.currentProjectRoot && this.activeThreadId) {
+      try {
+        console.log('[ChatWidget] Renaming persisted thread:', this.activeThreadId, 'to:', trimmedName);
+        await this.chatHistoryService.renameThread(
+          this.currentProjectRoot,
+          this.activeThreadId,
+          trimmedName
+        );
+        console.log('[ChatWidget] Thread renamed successfully');
+        
+        // Refresh thread list
+        await this.loadProjectHistory();
+        
+        this.isRenamingThread = false;
+        this.threadNameInput = '';
+        this.update();
+        return;
+      } catch (error) {
+        console.error('[ChatWidget] Failed to rename persisted thread:', error);
+        // Fall through to in-memory storage as fallback
+      }
+    }
+
+    // For unsaved projects (or if persistence failed): store in memory
+    console.log('[ChatWidget] Storing thread name in memory:', trimmedName);
+    this.inMemoryThreadName = trimmedName;
+    this.isRenamingThread = false;
+    this.threadNameInput = '';
+    this.update();
+  };
+
+  /**
+   * Handle key press in thread name input.
+   */
+  private handleThreadNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.handleSaveRenameThread();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.handleCancelRenameThread();
+    }
+  };
 
   protected override onAfterAttach(msg: Message): void {
     super.onAfterAttach(msg);
@@ -1037,7 +1227,7 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
               this.addMessage({
                 id: `${ChatWidget.LIBRARY_MESSAGE_ID_PREFIX}-${Date.now()}`,
                 role: 'assistant',
-                content: libraryResult.message || '✅ Libraries checked and installed',
+                content: libraryResult.message || 'Libraries checked and installed',
               });
             } else if (libraryResult.success && libraryResult.data?.librariesChecked > 0) {
               // Libraries are already installed, no need to show message
@@ -1138,66 +1328,138 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
 
   protected render(): React.ReactElement {
     const apiKey = this.preferences['arduino.chat.geminiApiKey'];
-    const hasProject = !!this.currentProjectRoot;
 
     return (
       <div className="chat-widget">
         <div className="chat-header">
-          <div className="chat-header-title">
-            <h3>{ChatWidget.LABEL}</h3>
-            {this.threads.length > 0 && (
-              <select
-                className="chat-thread-selector"
-                value={this.activeThreadId || ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    this.switchToThread(e.target.value);
-                  }
-                }}
-                title="Select chat thread"
-              >
-                {this.threads.map(thread => (
-                  <option key={thread.id} value={thread.id}>
-                    {thread.title}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <div className="chat-header-actions">
-            {this.currentProjectRoot && (
+          <div className="chat-header-top-row">
+            <div className="chat-header-title">
+              {this.isRenamingThread ? (
+                <input
+                  type="text"
+                  className="chat-thread-name-input"
+                  value={this.threadNameInput}
+                  onChange={(e) => {
+                    this.threadNameInput = e.target.value;
+                    this.update();
+                  }}
+                  onKeyDown={this.handleThreadNameKeyDown}
+                  onBlur={this.handleSaveRenameThread}
+                  autoFocus
+                  style={{ 
+                    background: 'var(--theia-input-background)',
+                    color: 'var(--theia-input-foreground)',
+                    border: '1px solid var(--theia-input-border)',
+                    padding: '4px 8px',
+                    borderRadius: '2px',
+                    fontSize: '14px',
+                    minWidth: '150px'
+                  }}
+                />
+              ) : (
+                <>
+                  <h3 
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[ChatWidget] Chat name clicked');
+                      await this.handleStartRenameThread().catch(error => {
+                        console.error('[ChatWidget] Error starting rename:', error);
+                      });
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      margin: 0,
+                      padding: '4px 8px',
+                      borderRadius: '2px',
+                      userSelect: 'none',
+                      display: 'inline-block',
+                      minWidth: '80px'
+                    }}
+                    title="Click to rename chat"
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--theia-list-hoverBackground)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    {this.getCurrentThreadName()}
+                  </h3>
+                  <select
+                    className="chat-thread-selector"
+                    value={this.activeThreadId || ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        this.switchToThread(e.target.value);
+                      }
+                    }}
+                    title="Select chat thread"
+                    style={{ marginLeft: '8px', marginRight: '8px' }}
+                    disabled={!this.currentProjectRoot}
+                  >
+                    {this.threads.length > 0 ? (
+                      this.threads.map((thread, index) => {
+                        // Show all threads, even if they have the same name
+                        // Add index or ID suffix if needed for disambiguation
+                        const displayTitle = thread.title || 'New Chat';
+                        // If multiple threads have the same name, show them all
+                        // They'll be distinguishable by their IDs in the dropdown
+                        return (
+                          <option key={thread.id} value={thread.id}>
+                            {displayTitle}
+                          </option>
+                        );
+                      })
+                    ) : (
+                      <option value="">No chats</option>
+                    )}
+                  </select>
+                </>
+              )}
+            </div>
+            <div className="chat-header-actions">
+              <div className="chat-header-icons">
+                <div
+                  className="chat-new-thread-icon"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[ChatWidget] New chat button clicked');
+                    this.createNewThread().catch(error => {
+                      console.error('[ChatWidget] Error creating new thread:', error);
+                    });
+                  }}
+                  title="New chat"
+                >
+                  <span className="chat-new-thread-symbol">+</span>
+                </div>
+                <div
+                  className="chat-info-icon"
+                  onClick={() => {
+                    this.showEditHelp = !this.showEditHelp;
+                    this.update();
+                  }}
+                  title={this.showEditHelp ? 'Hide edit formats' : 'Show edit formats'}
+                >
+                  <span className="chat-info-letter">i</span>
+                </div>
+                <div
+                  className="chat-settings-icon"
+                  onClick={this.handleOpenSettings}
+                  title="Settings"
+                >
+                  <span className="chat-settings-symbol">⚙</span>
+                </div>
+              </div>
               <button
-                className="theia-button secondary chat-new-thread-button"
-                onClick={() => this.createNewThread()}
-                title="New chat"
+                className="theia-button secondary chat-clear-button"
+                onClick={this.handleClear}
+                title="Clear chat"
               >
-                New Chat
+                Clear
               </button>
-            )}
-            <div
-              className="chat-info-icon"
-              onClick={() => {
-                this.showEditHelp = !this.showEditHelp;
-                this.update();
-              }}
-              title={this.showEditHelp ? 'Hide edit formats' : 'Show edit formats'}
-            >
-              <span className="chat-info-letter">i</span>
             </div>
-            <div
-              className="chat-settings-icon"
-              onClick={this.handleOpenSettings}
-              title="Settings"
-            >
-              <span className="chat-settings-symbol">⚙</span>
-            </div>
-            <button
-              className="theia-button secondary chat-clear-button"
-              onClick={this.handleClear}
-              title="Clear chat"
-            >
-              Clear
-            </button>
           </div>
         </div>
         {this.showEditHelp && (
@@ -1429,7 +1691,7 @@ REPLACE-WITH:
         <div className="chat-input-container">
           <textarea
             className="chat-input"
-            placeholder={hasProject ? "Ask me anything about development..." : "Ask me anything... (Chat history will be saved when you open a project folder)"}
+            placeholder="Ask me anything about development..."
             ref={this.inputRef}
             defaultValue={this.inputValue}
             onChange={this.handleInputChange}

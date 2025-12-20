@@ -17,7 +17,7 @@ export class IDEUpdaterCommands implements CommandContribution {
   }
 
   async checkForUpdates(initialCheck?: boolean): Promise<UpdateInfo | void> {
-    // Update checking is disabled for BlinkyEV
+    // Update checking is disabled for BlinkeyEV
     // Silently return without checking for updates
     return;
   }
@@ -26,7 +26,7 @@ export namespace IDEUpdaterCommands {
   export const CHECK_FOR_UPDATES: Command = Command.toLocalizedCommand(
     {
       id: 'arduino-check-for-ide-updates',
-  label: 'Check for Blinky IDE Updates',
+  label: 'Check for Blinkey IDE Updates',
       category: 'Arduino',
     },
     'arduino/ide-updater/checkForUpdates'

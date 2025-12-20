@@ -12,10 +12,10 @@ if (config.buildDate) {
     'plugins'
   )}`;
   // `plugins` folder inside the `~/.cognifyIDE` folder. This is for manually installed VS Code extensions. For example, custom themes.
-  // `plugins` folder inside the `~/.blinkyIDE` folder. This is for manually installed VS Code extensions. For example, custom themes.
+  // `plugins` folder inside the `~/.blinkeyIDE` folder. This is for manually installed VS Code extensions. For example, custom themes.
   process.env.THEIA_PLUGINS = [
     process.env.THEIA_PLUGINS,
-    `local-dir:${path.resolve(os.homedir(), '.blinkyIDE', 'plugins')}`,
+    `local-dir:${path.resolve(os.homedir(), '.blinkeyIDE', 'plugins')}`,
   ]
     .filter(Boolean)
     .join(',');
