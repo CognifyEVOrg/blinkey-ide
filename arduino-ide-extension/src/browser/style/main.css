@@ -35,7 +35,7 @@
 .p-TabBar-toolbar .item.arduino-tool-item .arduino-upload-sketch--toolbar,
 .p-TabBar-toolbar .item.arduino-tool-item .arduino-verify-sketch--toolbar,
 .p-TabBar-toolbar .item.arduino-tool-item .arduino-start-debug {
-    /* Blinky-specific primary toolbar style (distinct from Arduino’s teal) */
+    /* Blinkey-specific primary toolbar style (distinct from Arduino’s teal) */
     background: linear-gradient(135deg, #4f46e5, #22c55e);
     border-radius: 9999px;
     box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35),

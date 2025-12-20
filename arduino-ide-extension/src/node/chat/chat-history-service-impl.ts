@@ -13,12 +13,12 @@ import {
 } from '../../common/protocol/chat-history-service';
 import { ConfigServiceImpl } from '../config-service-impl';
 import {
-  encryptChatData,
-  decryptChatData,
-  isEncrypted,
-} from './chat-encryption';
+  encodeChatData,
+  decodeChatData,
+  isEncoded,
+} from './chat-encoding';
 
-const CHAT_DIR_NAME = '.blinky';
+const CHAT_DIR_NAME = '.blinkey';
 const CHAT_HISTORY_DIR = 'chat';
 const THREADS_INDEX_FILE = 'threads.json';
 const THREAD_FILE_PREFIX = 'thread-';
@@ -97,44 +97,78 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
   }
 
   /**
-   * Read the threads index file (encrypted).
+   * Read the threads index file (base64-encoded).
    */
   private async readThreadsIndex(projectRoot: string): Promise<ThreadsIndex> {
     const indexPath = this.getThreadsIndexPath(projectRoot);
     try {
       const content = await fs.readFile(indexPath, 'utf-8');
       
-      // Try to decrypt if encrypted, otherwise parse as plain JSON (migration)
-      let decryptedContent: string;
-      if (isEncrypted(content)) {
+      // Try to decode if base64-encoded, otherwise parse as plain JSON (migration)
+      let decodedContent: string;
+      if (isEncoded(content)) {
         try {
-          decryptedContent = decryptChatData(content, projectRoot);
-        } catch (decryptError) {
-          this.logger.error(`Failed to decrypt threads index: ${indexPath}`, decryptError);
+          decodedContent = decodeChatData(content, projectRoot);
+        } catch (decodeError) {
+          this.logger.error(`Failed to decode threads index: ${indexPath}`, decodeError);
+          // If it's legacy encrypted format, try to handle gracefully
+          if (decodeError instanceof Error && decodeError.message.includes('Legacy encrypted')) {
+            // Delete the corrupted file and start fresh
+            this.logger.warn(`Legacy encrypted format detected, starting fresh: ${indexPath}`);
+            try {
+              await fs.unlink(indexPath);
+            } catch {
+              // Ignore errors deleting
+            }
+            return { threads: [] };
+          }
           throw ChatHistoryError.ReadFailed(
-            `Failed to decrypt threads index: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}`,
+            `Failed to decode threads index: ${decodeError instanceof Error ? decodeError.message : String(decodeError)}`,
             indexPath
           );
         }
       } else {
-        // Legacy unencrypted file - migrate it
-        decryptedContent = content;
-        // Re-encrypt and save
+        // Plain JSON file - migrate to base64 and save
+        decodedContent = content;
         try {
-          const encrypted = encryptChatData(content, projectRoot);
-          await fs.writeFile(indexPath, encrypted, 'utf-8');
+          const encoded = encodeChatData(content, projectRoot);
+          await fs.writeFile(indexPath, encoded, 'utf-8');
         } catch (migrateError) {
-          this.logger.warn(`Failed to migrate threads index to encrypted format: ${indexPath}`, migrateError);
+          this.logger.warn(`Failed to migrate threads index to base64 format: ${indexPath}`, migrateError);
         }
       }
       
-      return JSON.parse(decryptedContent) as ThreadsIndex;
+      // Try to parse JSON
+      try {
+        return JSON.parse(decodedContent) as ThreadsIndex;
+      } catch (parseError) {
+        // If JSON parsing fails, the file might be corrupted
+        this.logger.error(`Failed to parse threads index JSON: ${indexPath}`, parseError);
+        // Try to delete the corrupted file and start fresh
+        try {
+          await fs.unlink(indexPath);
+          this.logger.warn(`Deleted corrupted threads index, starting fresh: ${indexPath}`);
+        } catch (unlinkError) {
+          this.logger.warn(`Failed to delete corrupted threads index: ${indexPath}`, unlinkError);
+        }
+        return { threads: [] };
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // Index doesn't exist yet, return empty
         return { threads: [] };
       }
       this.logger.error(`Failed to read threads index: ${indexPath}`, error);
+      // If it's a read/decode error, try to delete the file and start fresh
+      if (error instanceof Error && (error.message.includes('Failed to decode') || error.message.includes('Failed to read'))) {
+        try {
+          await fs.unlink(indexPath);
+          this.logger.warn(`Deleted corrupted threads index after error, starting fresh: ${indexPath}`);
+        } catch (unlinkError) {
+          // Ignore errors deleting
+        }
+        return { threads: [] };
+      }
       throw ChatHistoryError.ReadFailed(
         `Failed to read threads index: ${error instanceof Error ? error.message : String(error)}`,
         indexPath
@@ -143,14 +177,14 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
   }
 
   /**
-   * Write the threads index file (encrypted).
+   * Write the threads index file (base64-encoded).
    */
   private async writeThreadsIndex(projectRoot: string, index: ThreadsIndex): Promise<void> {
     const indexPath = this.getThreadsIndexPath(projectRoot);
     try {
       const jsonContent = JSON.stringify(index, null, 2);
-      const encrypted = encryptChatData(jsonContent, projectRoot);
-      await fs.writeFile(indexPath, encrypted, 'utf-8');
+      const encoded = encodeChatData(jsonContent, projectRoot);
+      await fs.writeFile(indexPath, encoded, 'utf-8');
     } catch (error) {
       this.logger.error(`Failed to write threads index: ${indexPath}`, error);
       throw ChatHistoryError.WriteFailed(
@@ -161,38 +195,61 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
   }
 
   /**
-   * Read a thread file (encrypted).
+   * Read a thread file (base64-encoded).
    */
   private async readThreadFile(projectRoot: string, threadId: string): Promise<Thread> {
     const threadPath = this.getThreadFilePath(projectRoot, threadId);
     try {
       const content = await fs.readFile(threadPath, 'utf-8');
       
-      // Try to decrypt if encrypted, otherwise parse as plain JSON (migration)
-      let decryptedContent: string;
-      if (isEncrypted(content)) {
+      // Try to decode if base64-encoded, otherwise parse as plain JSON (migration)
+      let decodedContent: string;
+      if (isEncoded(content)) {
         try {
-          decryptedContent = decryptChatData(content, projectRoot);
-        } catch (decryptError) {
-          this.logger.error(`Failed to decrypt thread file: ${threadPath}`, decryptError);
+          decodedContent = decodeChatData(content, projectRoot);
+        } catch (decodeError) {
+          this.logger.error(`Failed to decode thread file: ${threadPath}`, decodeError);
+          // If it's legacy encrypted format, handle gracefully
+          if (decodeError instanceof Error && decodeError.message.includes('Legacy encrypted')) {
+            throw ChatHistoryError.ReadFailed(
+              'Legacy encrypted format detected. Please recreate your chats.',
+              threadPath
+            );
+          }
           throw ChatHistoryError.ReadFailed(
-            `Failed to decrypt thread: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}`,
+            `Failed to decode thread: ${decodeError instanceof Error ? decodeError.message : String(decodeError)}`,
             threadPath
           );
         }
       } else {
-        // Legacy unencrypted file - migrate it
-        decryptedContent = content;
-        // Re-encrypt and save
+        // Plain JSON file - migrate to base64 and save
+        decodedContent = content;
         try {
-          const encrypted = encryptChatData(content, projectRoot);
-          await fs.writeFile(threadPath, encrypted, 'utf-8');
+          const encoded = encodeChatData(content, projectRoot);
+          await fs.writeFile(threadPath, encoded, 'utf-8');
         } catch (migrateError) {
-          this.logger.warn(`Failed to migrate thread file to encrypted format: ${threadPath}`, migrateError);
+          this.logger.warn(`Failed to migrate thread file to base64 format: ${threadPath}`, migrateError);
         }
       }
       
-      return JSON.parse(decryptedContent) as Thread;
+      // Try to parse JSON
+      try {
+        return JSON.parse(decodedContent) as Thread;
+      } catch (parseError) {
+        // If JSON parsing fails, the file might be corrupted
+        this.logger.error(`Failed to parse thread JSON: ${threadPath}`, parseError);
+        // Try to delete the corrupted file
+        try {
+          await fs.unlink(threadPath);
+          this.logger.warn(`Deleted corrupted thread file: ${threadPath}`);
+        } catch (unlinkError) {
+          this.logger.warn(`Failed to delete corrupted thread file: ${threadPath}`, unlinkError);
+        }
+        throw ChatHistoryError.ReadFailed(
+          `Failed to parse thread: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+          threadPath
+        );
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw ChatHistoryError.NotFound(`Thread not found: ${threadId}`, threadId);
@@ -209,14 +266,14 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
   }
 
   /**
-   * Write a thread file (encrypted).
+   * Write a thread file (base64-encoded).
    */
   private async writeThreadFile(projectRoot: string, thread: Thread): Promise<void> {
     const threadPath = this.getThreadFilePath(projectRoot, thread.id);
     try {
       const jsonContent = JSON.stringify(thread, null, 2);
-      const encrypted = encryptChatData(jsonContent, projectRoot);
-      await fs.writeFile(threadPath, encrypted, 'utf-8');
+      const encoded = encodeChatData(jsonContent, projectRoot);
+      await fs.writeFile(threadPath, encoded, 'utf-8');
     } catch (error) {
       this.logger.error(`Failed to write thread file: ${threadPath}`, error);
       throw ChatHistoryError.WriteFailed(

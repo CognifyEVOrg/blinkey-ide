@@ -1,12 +1,12 @@
 {
   "name": "cognifyev-arduino-ide",
   "version": "1.0.0",
-  "description": "Blinky AI-Powered Arduino IDE - An agentic IDE for embedded computers",
+  "description": "Blinkey AI-Powered Arduino IDE - An agentic IDE for embedded computers",
   "repository": {
     "type": "git",
     "url": "https://github.com/CognifyEVOrg/arduino-ide.git"
   },
-  "author": "Blinky",
+  "author": "Blinkey",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "engines": {

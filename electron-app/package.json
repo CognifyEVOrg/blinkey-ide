@@ -59,7 +59,7 @@
     "target": "electron",
     "frontend": {
       "config": {
-  "applicationName": "Blinky IDE",
+  "applicationName": "Blinkey IDE",
         "defaultTheme": {
           "light": "arduino-theme",
           "dark": "arduino-theme-dark"
@@ -68,7 +68,7 @@
         "validatePreferencesSchema": false,
         "electron": {
           "showWindowEarly": true,
-          "uriScheme": "blinky-ide"
+          "uriScheme": "blinkey-ide"
         },
         "reloadOnReconnect": true,
         "preferences": {
@@ -93,7 +93,7 @@
     },
     "backend": {
       "config": {
-  "configDirName": ".blinkyIDE",
+  "configDirName": ".blinkeyIDE",
         "singleInstance": true
       }
     },
@@ -103,11 +103,11 @@
       }
     }
   },
-  "author": "Blinky",
-  "description": "Blinky AI-Powered IDE",
+  "author": "Blinkey",
+  "description": "Blinkey AI-Powered IDE",
   "build": {
-  "appId": "cc.blinky.ide",
-  "productName": "Blinky IDE",
+  "appId": "cc.blinkey.ide",
+  "productName": "Blinkey IDE",
     "asar": false,
     "detectUpdateChannel": false,
     "generateUpdatesFilesForAllChannels": true,

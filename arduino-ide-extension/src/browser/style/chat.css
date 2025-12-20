@@ -32,11 +32,20 @@
 
 .chat-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 8px;
     padding: 10px 15px;
     border-bottom: 1px solid var(--theia-panel-border);
     background-color: var(--theia-panel-background);
+}
+
+.chat-header-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .chat-header-title {
@@ -44,6 +53,7 @@
     align-items: center;
     gap: 10px;
     flex: 1;
+    min-width: 200px;
 }
 
 .chat-header h3 {
@@ -63,6 +73,12 @@
     font-family: var(--theia-ui-font-family);
     cursor: pointer;
     max-width: 200px;
+    min-width: 120px;
+}
+
+.chat-thread-selector:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .chat-thread-selector:focus {
@@ -80,7 +96,35 @@
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
 }
+
+.chat-header-icons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* When space is constrained, clear button wraps to new line below icons */
+.chat-clear-button {
+    flex-shrink: 0;
+}
+
+/* On very small screens, stack everything vertically */
+@media (max-width: 400px) {
+    .chat-header-top-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .chat-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+
 
 .chat-clear-button {
     padding: 4px 12px;
@@ -144,6 +188,37 @@
 .chat-info-letter {
     color: black;
     font-size: 14px;
+    font-weight: bold;
+    font-style: normal;
+    line-height: 1;
+    font-family: Arial, sans-serif;
+}
+
+.chat-new-thread-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: white;
+    padding: 0;
+    transition: opacity 0.2s;
+    border: none;
+}
+
+.chat-new-thread-icon:hover {
+    opacity: 0.8;
+}
+
+.chat-new-thread-icon:active {
+    opacity: 0.6;
+}
+
+.chat-new-thread-symbol {
+    color: black;
+    font-size: 16px;
     font-weight: bold;
     font-style: normal;
     line-height: 1;
