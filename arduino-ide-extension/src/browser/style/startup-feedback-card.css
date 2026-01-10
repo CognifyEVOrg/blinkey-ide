@@ -1,0 +1,129 @@
+/* Startup Feedback Card Styles */
+.startup-feedback-card-widget {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+  pointer-events: auto;
+  max-width: 320px;
+  min-width: 280px;
+}
+
+.startup-feedback-card {
+  background: var(--theia-editorWidget-background);
+  border: 1px solid var(--theia-widget-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0;
+  font-family: var(--theia-ui-font-family);
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.startup-feedback-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 16px 12px 16px;
+  border-bottom: 1px solid var(--theia-widget-border);
+}
+
+.startup-feedback-card-title {
+  margin: 0;
+  font-size: var(--theia-ui-font-size2);
+  font-weight: 600;
+  color: var(--theia-editorWidget-foreground);
+}
+
+.startup-feedback-card-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--theia-icon-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.startup-feedback-card-close:hover {
+  background-color: var(--theia-button-hoverBackground);
+}
+
+.startup-feedback-card-close i {
+  font-size: 16px;
+}
+
+.startup-feedback-card-content {
+  padding: 16px;
+}
+
+.startup-feedback-card-message {
+  margin: 0 0 16px 0;
+  font-size: var(--theia-ui-font-size1);
+  color: var(--theia-descriptionForeground);
+  line-height: 1.5;
+}
+
+.startup-feedback-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.startup-feedback-card-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: var(--theia-ui-font-size1);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  width: 100%;
+}
+
+.startup-feedback-card-button.primary {
+  background-color: var(--theia-button-primaryBackground);
+  color: var(--theia-button-primaryForeground);
+}
+
+.startup-feedback-card-button.primary:hover {
+  background-color: var(--theia-button-primaryHoverBackground);
+}
+
+.startup-feedback-card-button.secondary {
+  background-color: var(--theia-button-secondaryBackground);
+  color: var(--theia-button-secondaryForeground);
+  border-color: var(--theia-button-border);
+}
+
+.startup-feedback-card-button.secondary:hover {
+  background-color: var(--theia-button-secondaryHoverBackground);
+}
+
+.startup-feedback-card-button i {
+  font-size: 16px;
+}
+
+/* Responsive: Hide on very small screens */
+@media (max-width: 600px) {
+  .startup-feedback-card-widget {
+    display: none;
+  }
+}
+

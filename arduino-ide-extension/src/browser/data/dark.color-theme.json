@@ -39,14 +39,19 @@
     "activityBar.inactiveForeground": "#666666",
     "activityBar.activeBorder": "#00ffff",
     "statusBar.background": "#0f1419",
-    "statusBar.foreground": "#00ffff",
+    "statusBar.foreground": "#ffffff",
+    "statusBar.noFolderForeground": "#ffffff",
+    "statusBar.debuggingForeground": "#ffffff",
+    "descriptionForeground": "#b0b0b0",
+    "panelTitle.inactiveForeground": "#b0b0b0",
+    "list.foreground": "#ffffff",
     "secondaryButton.background": "#ff000000",
     "secondaryButton.foreground": "#00ffff",
     "secondaryButton.hoverBackground": "#00ffff1a",
     "arduino.branding.primary": "#00ffff",
     "arduino.branding.secondary": "#ff00ff",
     "arduino.foreground": "#ffffff",
-    "arduino.output.foreground": "#00ff00",
+    "arduino.output.foreground": "#90ee90",
     "arduino.output.background": "#0a0e14",
     "arduino.toolbar.button.hoverBackground": "#16213e",
     "arduino.toolbar.button.secondary.label": "#ffffff",
@@ -83,7 +88,7 @@
     {
       "name": "Comments",
       "scope": "comment",
-      "settings": { "foreground": "#6A9955", "fontStyle": "italic" }
+      "settings": { "foreground": "#8fbc8f", "fontStyle": "italic" }
     },
     {
       "name": "Keywords",

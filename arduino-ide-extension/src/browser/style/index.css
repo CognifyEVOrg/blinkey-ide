@@ -22,6 +22,7 @@
 @import "./custom-codicon.css";
 @import "./progress-bar.css";
 @import "./settings-step-input.css";
+@import "./startup-feedback-card.css";
 
 :root {
     --arduino-button-height: 28px;

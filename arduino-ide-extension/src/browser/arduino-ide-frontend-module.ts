@@ -76,6 +76,8 @@ import { MonitorViewContribution } from './serial/monitor/monitor-view-contribut
 import { ChatWidget } from './widgets/chat/chat-widget';
 import { ChatViewContribution } from './widgets/chat/chat-view-contribution';
 import { AgentRegistry } from './widgets/chat/agent-registry';
+import { StartupFeedbackCardWidget } from './widgets/startup-feedback-card/startup-feedback-card-widget';
+import { StartupFeedbackCardContribution } from './widgets/startup-feedback-card/startup-feedback-card-contribution';
 import { ChatHistoryServiceClient } from './widgets/chat/chat-history-service';
 import {
   ChatHistoryService,
@@ -589,11 +591,15 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
   bind(AgentRegistry).toSelf().inSingletonScope();
   bind(ChatWidget).toSelf();
   bindViewContribution(bind, ChatViewContribution);
-  bind(FrontendApplicationContribution).toService(ChatViewContribution);
   bind(WidgetFactory).toDynamicValue((context) => ({
     id: ChatWidget.ID,
     createWidget: () => context.container.get(ChatWidget),
   }));
+
+  // Startup feedback card
+  bind(StartupFeedbackCardWidget).toSelf().inSingletonScope();
+  bind(StartupFeedbackCardContribution).toSelf().inSingletonScope();
+  bind(FrontendApplicationContribution).toService(StartupFeedbackCardContribution);
 
   bind(WorkspaceService).toSelf().inSingletonScope();
   rebind(TheiaWorkspaceService).toService(WorkspaceService);
