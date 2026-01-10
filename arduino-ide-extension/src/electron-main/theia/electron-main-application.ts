@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   contentTracing,
+  dialog,
   Event as ElectronEvent,
   ipcMain,
 } from '@theia/core/electron-shared/electron';
@@ -617,13 +618,17 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
         const timeoutId = setTimeout(() => {
           if (!resolved) {
             resolved = true;
-            const error = new Error(
-              `Backend deployment timeout after ${BACKEND_STARTUP_TIMEOUT / 1000} seconds. ` +
-              `The backend process may be hung or taking too long to start. ` +
-              `PID: ${backendProcess.pid}. ` +
-              `Try restarting the application or check for port conflicts/Arduino CLI issues.`
-            );
-            console.error(error.message);
+            const errorMessage = 
+              `Backend deployment timeout after ${BACKEND_STARTUP_TIMEOUT / 1000} seconds.\n\n` +
+              `The backend process may be hung or taking too long to start.\n` +
+              `PID: ${backendProcess.pid}.\n\n` +
+              `Possible causes:\n` +
+              `- Port conflicts (check if another instance is running)\n` +
+              `- Arduino CLI issues (check if arduino-cli is accessible)\n` +
+              `- File permission issues (check .Blinkey directory permissions)\n\n` +
+              `Try restarting the application or check the console logs for more details.`;
+            const error = new Error(errorMessage);
+            console.error(errorMessage);
             // Try to kill the hung backend process
             try {
               if (backendProcess.pid) {
@@ -632,6 +637,17 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
               }
             } catch (killError) {
               console.error(`Failed to terminate hung backend process:`, killError);
+            }
+            // Show error dialog to user if window is already visible (Windows-specific fix for stuck splash screen)
+            if (app.isReady() && this.initialWindow) {
+              try {
+                dialog.showErrorBox(
+                  'Blinkey IDE - Backend Startup Failed',
+                  errorMessage
+                );
+              } catch (err) {
+                console.error('Failed to show error dialog:', err);
+              }
             }
             reject(error);
           }
@@ -943,7 +959,7 @@ async function updateFrontendApplicationConfigFromPackageJson(
 }
 
 const fallbackFrontendAppConfig: FrontendApplicationConfig = {
-  applicationName: 'Arduino IDE',
+  applicationName: 'Blinkey IDE',
   defaultTheme: {
     light: 'arduino-theme',
     dark: 'arduino-theme-dark',
@@ -953,7 +969,7 @@ const fallbackFrontendAppConfig: FrontendApplicationConfig = {
   defaultLocale: '',
   electron: {
     showWindowEarly: true,
-    uriScheme: 'arduino-ide',
+    uriScheme: 'blinkey-ide',
   },
   reloadOnReconnect: true,
 };

@@ -287,9 +287,9 @@ export async function createCliConfig(
   configOverrides: Partial<DefaultCliConfig> = {}
 ): Promise<DefaultCliConfig> {
   const directories = {
-    data: join(configDirPath, 'data', 'Arduino15'),
-    downloads: join(configDirPath, 'data', 'Arduino15', 'staging'),
-    user: join(configDirPath, 'user', 'Arduino'),
+    data: join(configDirPath, 'data', '.Blinkey'),
+    downloads: join(configDirPath, 'data', '.Blinkey', 'staging'),
+    user: join(configDirPath, 'user', 'Blinkey'),
   };
   for (const directoryPath of Object.values(directories)) {
     await fs.mkdir(directoryPath, { recursive: true });

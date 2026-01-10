@@ -115,12 +115,6 @@
     "directories": {
       "buildResources": "resources"
     },
-    "fileAssociations": [
-      {
-        "ext": "ino",
-        "role": "Editor"
-      }
-    ],
     "files": [
       "arduino-ide-electron-main.js",
       "src-gen",

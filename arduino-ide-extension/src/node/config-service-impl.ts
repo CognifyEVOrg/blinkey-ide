@@ -229,24 +229,47 @@ export class ConfigServiceImpl
     const config = JSON.parse(configRaw);
     let { user, data } = JSON.parse(directoriesRaw);
 
-    // Replace default Arduino sketchbook path with Blinkey (platform-aware)
+    // Replace default Arduino paths with Blinkey (platform-aware)
     const homeDir = os.homedir();
     let defaultArduinoPath: string;
     let blinkeyPath: string;
+    let defaultArduino15Path: string;
+    let blinkey15Path: string;
     
     if (isWindows) {
       // Windows: Documents\Arduino -> Documents\Blinkey
       defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
       blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
+      // Windows: AppData\Local\Arduino15 -> AppData\Local\.Blinkey
+      defaultArduino15Path = join(homeDir, 'AppData', 'Local', 'Arduino15');
+      blinkey15Path = join(homeDir, 'AppData', 'Local', '.Blinkey');
     } else {
       // Linux/Mac: ~/Arduino -> ~/Blinkey
       defaultArduinoPath = join(homeDir, 'Arduino');
       blinkeyPath = join(homeDir, 'Blinkey');
+      // Linux/Mac: ~/.arduino15 -> ~/.Blinkey
+      defaultArduino15Path = join(homeDir, '.arduino15');
+      blinkey15Path = join(homeDir, '.Blinkey');
     }
     
+    // Replace sketchbook path
     if (user === defaultArduinoPath) {
       user = blinkeyPath;
       this.logger.info(`Changed default sketchbook path from ${defaultArduinoPath} to ${blinkeyPath}`);
+    }
+    
+    // Replace data directory path (where libraries are stored)
+    // Check if data path contains Arduino15 (case-insensitive) or matches the default Arduino15 path
+    const dataLower = data.toLowerCase();
+    if (data === defaultArduino15Path || dataLower.includes('arduino15')) {
+      const originalDataPath = data;
+      // Replace Arduino15 with .Blinkey in the path, preserving the parent directory structure
+      data = data.replace(/Arduino15/gi, '.Blinkey').replace(/arduino15/gi, '.Blinkey');
+      // Ensure we use the platform-specific path if replacement didn't work as expected
+      if (data === originalDataPath) {
+        data = blinkey15Path;
+      }
+      this.logger.info(`Changed default data directory from ${originalDataPath} to ${data}`);
     }
 
     return { ...config.config, directories: { user, data } };
@@ -256,32 +279,58 @@ export class ConfigServiceImpl
     const cliPath = this.daemon.getExecPath();
     await spawnCommand(cliPath, ['config', 'init', '--dest-dir', fsPathToDir]);
     
-    // After initializing, set the default sketchbook path to use "Blinkey" instead of "Arduino" (platform-aware)
+    // After initializing, set the default paths to use "Blinkey" instead of "Arduino" (platform-aware)
     const homeDir = os.homedir();
     let defaultArduinoPath: string;
     let blinkeyPath: string;
+    let defaultArduino15Path: string;
+    let blinkey15Path: string;
     
     if (isWindows) {
       // Windows: Documents\Arduino -> Documents\Blinkey
       defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
       blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
+      // Windows: AppData\Local\Arduino15 -> AppData\Local\.Blinkey
+      defaultArduino15Path = join(homeDir, 'AppData', 'Local', 'Arduino15');
+      blinkey15Path = join(homeDir, 'AppData', 'Local', '.Blinkey');
     } else {
       // Linux/Mac: ~/Arduino -> ~/Blinkey
       defaultArduinoPath = join(homeDir, 'Arduino');
       blinkeyPath = join(homeDir, 'Blinkey');
+      // Linux/Mac: ~/.arduino15 -> ~/.Blinkey
+      defaultArduino15Path = join(homeDir, '.arduino15');
+      blinkey15Path = join(homeDir, '.Blinkey');
     }
     
-    // Check if the default Arduino path is set, and change it to Blinkey
+    // Set sketchbook path to Blinkey
     try {
-      const directoriesRaw = await spawnCommand(cliPath, ['config', 'get', 'directories.user', '--json']);
-      const currentUserPath = JSON.parse(directoriesRaw);
+      const userPathRaw = await spawnCommand(cliPath, ['config', 'get', 'directories.user', '--json']);
+      const currentUserPath = JSON.parse(userPathRaw);
       if (currentUserPath === defaultArduinoPath) {
         await spawnCommand(cliPath, ['config', 'set', 'directories.user', blinkeyPath]);
         this.logger.info(`Set default sketchbook path to ${blinkeyPath} instead of ${defaultArduinoPath}`);
       }
     } catch (error) {
-      // If we can't read or set the config, log but don't fail
       this.logger.warn('Could not set default Blinkey sketchbook path:', error);
+    }
+    
+    // Set data directory path to .Blinkey (where libraries are stored)
+    try {
+      const dataPathRaw = await spawnCommand(cliPath, ['config', 'get', 'directories.data', '--json']);
+      const currentDataPath = JSON.parse(dataPathRaw);
+      const currentDataPathLower = currentDataPath.toLowerCase();
+      if (currentDataPath === defaultArduino15Path || currentDataPathLower.includes('arduino15')) {
+        // Replace Arduino15 with .Blinkey in the path
+        let newDataPath = currentDataPath.replace(/Arduino15/gi, '.Blinkey').replace(/arduino15/gi, '.Blinkey');
+        // Use platform-specific path if replacement didn't change anything
+        if (newDataPath === currentDataPath) {
+          newDataPath = blinkey15Path;
+        }
+        await spawnCommand(cliPath, ['config', 'set', 'directories.data', newDataPath]);
+        this.logger.info(`Set default data directory to ${newDataPath} instead of ${currentDataPath}`);
+      }
+    } catch (error) {
+      this.logger.warn('Could not set default Blinkey data directory path:', error);
     }
   }
 

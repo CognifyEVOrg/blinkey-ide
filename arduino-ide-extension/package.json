@@ -17,7 +17,7 @@
     "prebuild": "rimraf lib && npx --prefix .. tailwindcss -i ./src/browser/style/tailwind.css -o ./src/browser/style/tailwind-compiled.css --minify",
     "build": "tsc",
     "build:dev": "yarn build",
-    "postbuild": "ncp ./src/node/cli-protocol/ ./lib/node/cli-protocol/",
+    "postbuild": "ncp ./src/node/cli-protocol/ ./lib/node/cli-protocol/ && ncp ./src/node/resources/ ./lib/node/resources/",
     "watch": "tsc -w",
     "test": "cross-env IDE2_TEST=true mocha \"./lib/test/**/*.test.js\"",
     "test:slow": "cross-env IDE2_TEST=true mocha \"./lib/test/**/*.slow-test.js\" --slow 5000"

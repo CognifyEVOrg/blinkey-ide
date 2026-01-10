@@ -81,7 +81,7 @@ describe('core-client-provider', () => {
     const primaryPackageIndexPath = join(
       configDirPath,
       'data',
-      'Arduino15',
+      '.Blinkey',
       'package_index.json'
     );
     rimrafSync(primaryPackageIndexPath);
@@ -112,7 +112,7 @@ describe('core-client-provider', () => {
       const builtinToolsPath = join(
         configDirPath,
         'data',
-        'Arduino15',
+        '.Blinkey',
         'packages',
         'builtin',
         'tools',
@@ -137,7 +137,7 @@ describe('core-client-provider', () => {
     const libraryPackageIndexPath = join(
       configDirPath,
       'data',
-      'Arduino15',
+      '.Blinkey',
       'library_index.json'
     );
     rimrafSync(libraryPackageIndexPath);
@@ -173,7 +173,7 @@ describe('core-client-provider', () => {
     const thirdPartyPackageIndexPath = join(
       configDirPath,
       'data',
-      'Arduino15',
+      '.Blinkey',
       'package_teensy_index.json'
     );
     rimrafSync(thirdPartyPackageIndexPath);
