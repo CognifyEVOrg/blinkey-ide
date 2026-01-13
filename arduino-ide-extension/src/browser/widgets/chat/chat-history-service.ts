@@ -191,6 +191,24 @@ export class ChatHistoryServiceClient {
   }
 
   /**
+   * Clear all messages from a thread (keeps the thread but removes all messages).
+   */
+  async clearMessages(projectRoot: string, threadId: string): Promise<Thread> {
+    const thread = await this.service.clearMessages(projectRoot, threadId);
+    
+    // Update active thread if it's the same
+    if (this.activeThread?.id === threadId) {
+      this.activeThread = thread;
+      this.onActiveThreadChangedEmitter.fire(thread);
+    }
+    
+    // Refresh thread list to update timestamp
+    await this.listThreads(projectRoot);
+    
+    return thread;
+  }
+
+  /**
    * Set the active thread and load its messages.
    */
   async setActiveThread(thread: Thread | undefined): Promise<void> {

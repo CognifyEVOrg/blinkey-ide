@@ -439,4 +439,27 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
       }
     }
   }
+
+  async clearMessages(projectRoot: string, threadId: string): Promise<Thread> {
+    const resolvedRoot = await this.resolveProjectRoot(projectRoot);
+    const thread = await this.readThreadFile(resolvedRoot, threadId);
+
+    // Clear all messages
+    thread.messages = [];
+    thread.updatedAt = new Date().toISOString();
+
+    // Update index - clear last message preview
+    const index = await this.readThreadsIndex(resolvedRoot);
+    const summary = index.threads.find(t => t.id === threadId);
+    if (summary) {
+      summary.updatedAt = thread.updatedAt;
+      summary.lastMessagePreview = undefined;
+    }
+
+    // Write both files
+    await this.writeThreadFile(resolvedRoot, thread);
+    await this.writeThreadsIndex(resolvedRoot, index);
+
+    return thread;
+  }
 }

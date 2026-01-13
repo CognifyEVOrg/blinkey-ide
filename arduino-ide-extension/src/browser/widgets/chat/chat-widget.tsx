@@ -547,7 +547,11 @@ export class ChatWidget extends ReactWidget {
     super.onAfterShow(msg);
     this.setInitialWidth();
     // Reload project history when widget is shown (in case project changed while hidden)
-    await this.loadProjectHistory();
+    try {
+      await this.loadProjectHistory();
+    } catch (error) {
+      console.warn('Failed to reload project history on show:', error);
+    }
     this.scrollToBottom();
   }
 
@@ -560,11 +564,61 @@ export class ChatWidget extends ReactWidget {
     }
 
     try {
-      await this.loadProjectHistory();
-      this.showWelcomeMessage();
+      // Retry loading project history with delay to ensure editor is ready
+      let retries = 5;
+      let loaded = false;
+      while (retries > 0 && !loaded) {
+        try {
+          const projectRoot = await this.getCurrentProjectRoot();
+          if (projectRoot) {
+            // We have a project root, load history
+            await this.loadProjectHistory();
+            loaded = true;
+          } else {
+            // No project root yet, wait and retry
+            retries--;
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        } catch (error) {
+          retries--;
+          if (retries > 0) {
+            // Wait a bit before retrying (editor might not be ready yet)
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.warn('Failed to load project history after retries:', error);
+          }
+        }
+      }
+      
+      // If still no messages loaded, show welcome message
+      if (this.messages.length === 0) {
+        this.showWelcomeMessage();
+      }
       this.initialized = true;
+      
+      // Also set up a delayed retry in case editor becomes available later
+      setTimeout(async () => {
+        if (!this.currentProjectRoot && this.messages.length === 0) {
+          try {
+            await this.loadProjectHistory();
+            if (this.messages.length === 0) {
+              this.showWelcomeMessage();
+            }
+            this.update();
+          } catch (error) {
+            console.debug('Delayed project history load failed (this is OK):', error);
+          }
+        }
+      }, 3000);
     } catch (error) {
       console.error('Failed to initialize chat widget:', error);
+      // Show welcome message as fallback
+      if (this.messages.length === 0) {
+        this.showWelcomeMessage();
+      }
+      this.initialized = true;
     }
   }
 
@@ -988,8 +1042,36 @@ REMEMBER: The user can see their current code. You only need to show what CHANGE
   }
 
   private handleClear = async (): Promise<void> => {
-    // Create a new thread instead of clearing (preserves history)
-    await this.createNewThread();
+    // Clear messages from the current thread (don't delete the thread)
+    if (this.currentProjectRoot && this.activeThreadId) {
+      // For saved projects with active thread, clear messages but keep the thread
+      try {
+        // Clear messages from the thread
+        await this.chatHistoryService.clearMessages(this.currentProjectRoot, this.activeThreadId);
+        // Clear UI messages
+        this.messages = [];
+        // Update the thread in the list (update timestamp)
+        const threadIndex = this.threads.findIndex(t => t.id === this.activeThreadId);
+        if (threadIndex >= 0) {
+          this.threads[threadIndex] = {
+            ...this.threads[threadIndex],
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      } catch (error) {
+        console.warn('Failed to clear thread messages:', error);
+        // Fallback: just clear UI messages
+        this.messages = [];
+      }
+    } else {
+      // No saved project or no active thread - just clear UI messages
+      this.messages = [];
+      this.activeThreadId = undefined;
+    }
+    
+    // Show welcome message
+    this.showWelcomeMessage();
+    this.update();
   };
 
   private handleOpenSettings = (): void => {

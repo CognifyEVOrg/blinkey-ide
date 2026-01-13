@@ -94,8 +94,26 @@ function enableFileLogger() {
       // eslint-disable-next-line prefer-rest-params
       const messages = Object.values(arguments);
       const message = util.format(...messages);
-      original(message);
-      logToFile(message);
+      // Handle EPIPE errors gracefully - stdout/stderr may be closed in AppImage environments
+      try {
+        original(message);
+      } catch (error: unknown) {
+        // Ignore EPIPE errors (broken pipe) - this can happen when stdout/stderr are closed
+        // in packaged Electron apps like AppImage
+        const err = error as { code?: string; message?: string };
+        if (err && (err.code === 'EPIPE' || err.message?.includes('EPIPE'))) {
+          // Silently ignore EPIPE errors - stdout/stderr pipes are closed
+          return;
+        }
+        // Re-throw non-EPIPE errors for debugging
+        throw error;
+      }
+      // Always try to log to file, even if console output failed
+      try {
+        logToFile(message);
+      } catch (fileError) {
+        // Ignore file logging errors to prevent cascading failures
+      }
     };
   }
 }

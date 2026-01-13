@@ -135,4 +135,11 @@ export interface ChatHistoryService {
    * @param threadId - UUID of the thread.
    */
   deleteThread(projectRoot: string, threadId: string): Promise<void>;
+
+  /**
+   * Clear all messages from a thread (keeps the thread but removes all messages).
+   * @param projectRoot - Canonical filesystem path to the project root.
+   * @param threadId - UUID of the thread.
+   */
+  clearMessages(projectRoot: string, threadId: string): Promise<Thread>;
 }

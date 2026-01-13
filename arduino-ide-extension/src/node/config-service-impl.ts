@@ -182,12 +182,85 @@ export class ConfigServiceImpl
       const content = await fs.readFile(cliConfigPath, {
         encoding: 'utf8',
       });
-      const model = (yaml.load(content) || {}) as CliConfig;
+      let model = (yaml.load(content) || {}) as CliConfig;
+      
+      // Normalize any Arduino15 paths to .Blinkey in the loaded config
+      let normalizedData = model.directories?.data;
+      let normalizedUser = model.directories?.user;
+      let configChanged = false;
+      const homeDir = os.homedir();
+      
+      if (model.directories?.data) {
+        const dataPath = model.directories.data;
+        const dataPathLower = dataPath.toLowerCase();
+        if (dataPathLower.includes('arduino15')) {
+          let defaultArduino15Path: string;
+          let blinkey15Path: string;
+          
+          if (isWindows) {
+            defaultArduino15Path = join(homeDir, 'AppData', 'Local', 'Arduino15');
+            blinkey15Path = join(homeDir, 'AppData', 'Local', '.Blinkey');
+          } else {
+            defaultArduino15Path = join(homeDir, '.arduino15');
+            blinkey15Path = join(homeDir, '.Blinkey');
+          }
+          
+          if (dataPath === defaultArduino15Path) {
+            normalizedData = blinkey15Path;
+          } else {
+            normalizedData = dataPath.replace(/Arduino15/gi, '.Blinkey').replace(/arduino15/gi, '.Blinkey');
+          }
+          configChanged = true;
+          this.logger.info(`Normalized data directory path from ${dataPath} to ${normalizedData}`);
+        }
+      }
+      
+      if (model.directories?.user) {
+        const userPath = model.directories.user;
+        let defaultArduinoPath: string;
+        let blinkeyPath: string;
+        
+        if (isWindows) {
+          defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
+          blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
+        } else {
+          defaultArduinoPath = join(homeDir, 'Arduino');
+          blinkeyPath = join(homeDir, 'Blinkey');
+        }
+        
+        if (userPath === defaultArduinoPath) {
+          normalizedUser = blinkeyPath;
+          configChanged = true;
+          this.logger.info(`Normalized user directory path from ${userPath} to ${blinkeyPath}`);
+        }
+      }
+      
+      // Create new model with normalized paths if changes were made
+      if (configChanged && normalizedData && normalizedUser) {
+        model = {
+          ...model,
+          directories: {
+            ...model.directories,
+            data: normalizedData,
+            user: normalizedUser,
+          },
+        };
+      }
+      
       this.logger.info(`Loaded CLI configuration: ${JSON.stringify(model)}`);
       if (model.directories?.data && model.directories?.user) {
         this.logger.info(
           "'directories.data' and 'directories.user' are set in the CLI configuration model."
         );
+        // Write normalized config back to file to persist the changes
+        if (configChanged) {
+          try {
+            await fs.writeFile(cliConfigPath, yaml.dump(model), { encoding: 'utf-8' });
+            this.logger.info(`Persisted normalized Blinkey paths to ${cliConfigPath}`);
+          } catch (writeError) {
+            this.logger.warn('Could not persist normalized config:', writeError);
+          }
+        }
         return model as DefaultCliConfig;
       }
       // The CLI can run with partial (missing `port`, `directories`), the IDE2 cannot.
@@ -205,6 +278,17 @@ export class ConfigServiceImpl
           mergedModel
         )}`
       );
+      
+      // IMPORTANT: Write the merged config back to file to ensure directories are persisted
+      // This prevents arduino-cli from using Arduino15 defaults when called directly
+      try {
+        // Write YAML directly to ensure directories are in the file
+        await fs.writeFile(cliConfigPath, yaml.dump(mergedModel), { encoding: 'utf-8' });
+        this.logger.info(`Persisted merged CLI configuration with Blinkey paths to ${cliConfigPath}`);
+      } catch (writeError) {
+        this.logger.warn('Could not persist merged config to file (will use in-memory config):', writeError);
+      }
+      
       return mergedModel;
     } catch (error) {
       if (ErrnoException.isENOENT(error)) {
@@ -219,11 +303,15 @@ export class ConfigServiceImpl
 
   private async getFallbackCliConfig(): Promise<DefaultCliConfig> {
     const cliPath = this.daemon.getExecPath();
+    const cliConfigFileUri = await this.getCliConfigFileUri();
+    const cliConfigPath = FileUri.fsPath(cliConfigFileUri);
+    
+    // IMPORTANT: Use --config-file flag to ensure we're reading from the correct config file
     const [configRaw, directoriesRaw] = await Promise.all([
-      spawnCommand(cliPath, ['config', 'dump', '--json']),
+      spawnCommand(cliPath, ['config', 'dump', '--config-file', cliConfigPath, '--json']),
       // Since CLI 1.0, the command `config dump` only returns user-modified values and not default ones.
       // directories.user and directories.data are required by IDE2 so we get the default value explicitly.
-      spawnCommand(cliPath, ['config', 'get', 'directories', '--json']),
+      spawnCommand(cliPath, ['config', 'get', 'directories', '--config-file', cliConfigPath, '--json']),
     ]);
 
     const config = JSON.parse(configRaw);
@@ -260,6 +348,7 @@ export class ConfigServiceImpl
     
     // Replace data directory path (where libraries are stored)
     // Check if data path contains Arduino15 (case-insensitive) or matches the default Arduino15 path
+    let dataPathChanged = false;
     const dataLower = data.toLowerCase();
     if (data === defaultArduino15Path || dataLower.includes('arduino15')) {
       const originalDataPath = data;
@@ -270,44 +359,109 @@ export class ConfigServiceImpl
         data = blinkey15Path;
       }
       this.logger.info(`Changed default data directory from ${originalDataPath} to ${data}`);
+      dataPathChanged = true;
     }
 
-    return { ...config.config, directories: { user, data } };
+    const userPathChanged = user === defaultArduinoPath;
+    
+    const fallbackConfig = { ...config.config, directories: { user, data } };
+    
+    // IMPORTANT: If we detected and fixed Arduino15 paths, immediately write them to the config file
+    // This prevents arduino-cli from creating .arduino15 folders when downloading boards
+    if (userPathChanged || dataPathChanged) {
+      try {
+        // Use arduino-cli config set to update the file (ensures proper formatting)
+        if (userPathChanged) {
+          await spawnCommand(cliPath, ['config', 'set', 'directories.user', user, '--config-file', cliConfigPath]);
+        }
+        if (dataPathChanged) {
+          await spawnCommand(cliPath, ['config', 'set', 'directories.data', data, '--config-file', cliConfigPath]);
+        }
+        this.logger.info(`Persisted corrected Blinkey paths to config file: ${cliConfigPath}`);
+      } catch (writeError) {
+        this.logger.warn('Could not persist corrected paths to config file:', writeError);
+        // Fallback: write YAML directly
+        try {
+          await fs.writeFile(cliConfigPath, yaml.dump(fallbackConfig), { encoding: 'utf-8' });
+          this.logger.info(`Persisted corrected Blinkey paths via direct YAML write`);
+        } catch (yamlWriteError) {
+          this.logger.warn('Could not write corrected config via YAML either:', yamlWriteError);
+        }
+      }
+    }
+
+    return fallbackConfig;
   }
 
   private async initCliConfigTo(fsPathToDir: string): Promise<void> {
     const cliPath = this.daemon.getExecPath();
-    await spawnCommand(cliPath, ['config', 'init', '--dest-dir', fsPathToDir]);
+    const cliConfigFileUri = await this.getCliConfigFileUri();
+    const cliConfigPath = FileUri.fsPath(cliConfigFileUri);
     
-    // After initializing, set the default paths to use "Blinkey" instead of "Arduino" (platform-aware)
+    // CRITICAL: Create config file ourselves with Blinkey paths to prevent .arduino15 creation
+    // Don't use 'config init' as it creates directories with default Arduino paths
     const homeDir = os.homedir();
-    let defaultArduinoPath: string;
     let blinkeyPath: string;
-    let defaultArduino15Path: string;
     let blinkey15Path: string;
     
     if (isWindows) {
-      // Windows: Documents\Arduino -> Documents\Blinkey
-      defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
+      // Windows: Documents\Blinkey
       blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
-      // Windows: AppData\Local\Arduino15 -> AppData\Local\.Blinkey
-      defaultArduino15Path = join(homeDir, 'AppData', 'Local', 'Arduino15');
+      // Windows: AppData\Local\.Blinkey
       blinkey15Path = join(homeDir, 'AppData', 'Local', '.Blinkey');
     } else {
-      // Linux/Mac: ~/Arduino -> ~/Blinkey
-      defaultArduinoPath = join(homeDir, 'Arduino');
+      // Linux/Mac: ~/Blinkey
       blinkeyPath = join(homeDir, 'Blinkey');
-      // Linux/Mac: ~/.arduino15 -> ~/.Blinkey
-      defaultArduino15Path = join(homeDir, '.arduino15');
+      // Linux/Mac: ~/.Blinkey
       blinkey15Path = join(homeDir, '.Blinkey');
     }
     
+    // Create config file directly with Blinkey paths
+    const initialConfig: CliConfig = {
+      directories: {
+        user: blinkeyPath,
+        data: blinkey15Path,
+      },
+    };
+    
+    // Ensure the directory exists
+    await fs.mkdir(fsPathToDir, { recursive: true });
+    
+    // Write the config file with correct paths from the start
+    await fs.writeFile(cliConfigPath, yaml.dump(initialConfig), { encoding: 'utf8' });
+    this.logger.info(`Created config file with Blinkey paths at ${cliConfigPath} to prevent .arduino15 creation`);
+    
+    // Verify with CLI that the config is valid (but don't let it modify it)
+    try {
+      await spawnCommand(cliPath, ['config', 'dump', '--config-file', cliConfigPath, '--json']);
+      this.logger.info('Config file validated by CLI');
+    } catch (error) {
+      this.logger.warn('CLI validation failed, but config file created with Blinkey paths:', error);
+    }
+    
+    // Calculate paths for comparison (no longer needed but kept for compatibility)
+    let defaultArduinoPath: string;
+    let defaultArduino15Path: string;
+    
+    if (isWindows) {
+      defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
+      defaultArduino15Path = join(homeDir, 'AppData', 'Local', 'Arduino15');
+    } else {
+      defaultArduinoPath = join(homeDir, 'Arduino');
+      defaultArduino15Path = join(homeDir, '.arduino15');
+    }
+    
+    // IMPORTANT: Use --config-file flag to ensure we're updating the correct config file
+    // that the daemon will use, not a global or default config file
+    
     // Set sketchbook path to Blinkey
     try {
-      const userPathRaw = await spawnCommand(cliPath, ['config', 'get', 'directories.user', '--json']);
-      const currentUserPath = JSON.parse(userPathRaw);
+      // Read config file directly to avoid triggering CLI directory creation
+      const content = await fs.readFile(cliConfigPath, { encoding: 'utf8' });
+      const config = yaml.load(content) as CliConfig;
+      const currentUserPath = config.directories?.user;
       if (currentUserPath === defaultArduinoPath) {
-        await spawnCommand(cliPath, ['config', 'set', 'directories.user', blinkeyPath]);
+        await spawnCommand(cliPath, ['config', 'set', 'directories.user', blinkeyPath, '--config-file', cliConfigPath]);
         this.logger.info(`Set default sketchbook path to ${blinkeyPath} instead of ${defaultArduinoPath}`);
       }
     } catch (error) {
@@ -316,18 +470,31 @@ export class ConfigServiceImpl
     
     // Set data directory path to .Blinkey (where libraries are stored)
     try {
-      const dataPathRaw = await spawnCommand(cliPath, ['config', 'get', 'directories.data', '--json']);
-      const currentDataPath = JSON.parse(dataPathRaw);
-      const currentDataPathLower = currentDataPath.toLowerCase();
-      if (currentDataPath === defaultArduino15Path || currentDataPathLower.includes('arduino15')) {
+      // Read config file directly to avoid triggering CLI directory creation
+      const content = await fs.readFile(cliConfigPath, { encoding: 'utf8' });
+      const config = yaml.load(content) as CliConfig;
+      const currentDataPath = config.directories?.data;
+      if (currentDataPath) {
+        const currentDataPathLower = currentDataPath.toLowerCase();
+        if (currentDataPath === defaultArduino15Path || currentDataPathLower.includes('arduino15')) {
         // Replace Arduino15 with .Blinkey in the path
         let newDataPath = currentDataPath.replace(/Arduino15/gi, '.Blinkey').replace(/arduino15/gi, '.Blinkey');
         // Use platform-specific path if replacement didn't change anything
         if (newDataPath === currentDataPath) {
           newDataPath = blinkey15Path;
         }
-        await spawnCommand(cliPath, ['config', 'set', 'directories.data', newDataPath]);
+        // Write directly to YAML file first to prevent directory creation
+        const updatedConfig = {
+          ...config,
+          directories: {
+            ...config.directories,
+            data: newDataPath,
+          },
+        };
+        await fs.writeFile(cliConfigPath, yaml.dump(updatedConfig), { encoding: 'utf8' });
+        await spawnCommand(cliPath, ['config', 'set', 'directories.data', newDataPath, '--config-file', cliConfigPath]);
         this.logger.info(`Set default data directory to ${newDataPath} instead of ${currentDataPath}`);
+        }
       }
     } catch (error) {
       this.logger.warn('Could not set default Blinkey data directory path:', error);
@@ -450,9 +617,110 @@ export class ConfigServiceImpl
       });
     });
 
-    const cliConfigUri = await this.getCliConfigFileUri();
-    const cliConfigPath = FileUri.fsPath(cliConfigUri);
-    await fs.writeFile(cliConfigPath, configRaw, { encoding: 'utf-8' });
+    // IMPORTANT: Parse YAML and normalize any Arduino15 paths with .Blinkey before writing
+    // The daemon might return paths with .arduino15, so we need to normalize them
+    try {
+      const config = yaml.load(configRaw) as CliConfig;
+      const homeDir = os.homedir();
+      let normalizedData = config.directories?.data;
+      let normalizedUser = config.directories?.user;
+      let configChanged = false;
+      
+      if (config.directories?.data) {
+        const dataPath = config.directories.data;
+        const dataPathLower = dataPath.toLowerCase();
+        if (dataPathLower.includes('arduino15')) {
+          let defaultArduino15Path: string;
+          let blinkey15Path: string;
+          
+          if (isWindows) {
+            defaultArduino15Path = join(homeDir, 'AppData', 'Local', 'Arduino15');
+            blinkey15Path = join(homeDir, 'AppData', 'Local', '.Blinkey');
+          } else {
+            defaultArduino15Path = join(homeDir, '.arduino15');
+            blinkey15Path = join(homeDir, '.Blinkey');
+          }
+          
+          if (dataPath === defaultArduino15Path) {
+            normalizedData = blinkey15Path;
+          } else {
+            normalizedData = dataPath.replace(/Arduino15/gi, '.Blinkey').replace(/arduino15/gi, '.Blinkey');
+          }
+          configChanged = true;
+          this.logger.info(`Normalized data directory from ${dataPath} to ${normalizedData}`);
+        }
+      }
+      
+      if (config.directories?.user) {
+        const userPath = config.directories.user;
+        let defaultArduinoPath: string;
+        let blinkeyPath: string;
+        
+        if (isWindows) {
+          defaultArduinoPath = join(homeDir, 'Documents', 'Arduino');
+          blinkeyPath = join(homeDir, 'Documents', 'Blinkey');
+        } else {
+          defaultArduinoPath = join(homeDir, 'Arduino');
+          blinkeyPath = join(homeDir, 'Blinkey');
+        }
+        
+        if (userPath === defaultArduinoPath) {
+          normalizedUser = blinkeyPath;
+          configChanged = true;
+          this.logger.info(`Normalized user directory from ${userPath} to ${blinkeyPath}`);
+        }
+      }
+      
+      // Create new config object with normalized paths if changes were made
+      let finalConfig: CliConfig = config;
+      if (configChanged && normalizedData && normalizedUser) {
+        finalConfig = {
+          ...config,
+          directories: {
+            ...config.directories,
+            data: normalizedData,
+            user: normalizedUser,
+          },
+        };
+      }
+      
+      const cliConfigUri = await this.getCliConfigFileUri();
+      const cliConfigPath = FileUri.fsPath(cliConfigUri);
+      const finalYaml = configChanged ? yaml.dump(finalConfig) : configRaw;
+      await fs.writeFile(cliConfigPath, finalYaml, { encoding: 'utf-8' });
+      if (configChanged) {
+        this.logger.info(`Wrote daemon state to ${cliConfigPath} (normalized Arduino15 paths to .Blinkey)`);
+      } else {
+        this.logger.info(`Wrote daemon state to ${cliConfigPath}`);
+      }
+    } catch (error) {
+      // If YAML parsing fails, fall back to string replacement
+      this.logger.warn('Failed to parse daemon config as YAML, using string replacement:', error);
+      const homeDir = os.homedir();
+      let normalizedConfig = configRaw;
+      
+      // Replace .arduino15 with .Blinkey (case-insensitive)
+      normalizedConfig = normalizedConfig.replace(/\.arduino15/gi, '.Blinkey');
+      normalizedConfig = normalizedConfig.replace(/arduino15/gi, '.Blinkey');
+      
+      // Also replace ~/Arduino with ~/Blinkey
+      if (isWindows) {
+        normalizedConfig = normalizedConfig.replace(
+          new RegExp(join(homeDir, 'Documents', 'Arduino').replace(/\\/g, '\\\\'), 'gi'),
+          join(homeDir, 'Documents', 'Blinkey')
+        );
+      } else {
+        normalizedConfig = normalizedConfig.replace(
+          new RegExp(join(homeDir, 'Arduino').replace(/\//g, '\\/'), 'g'),
+          join(homeDir, 'Blinkey')
+        );
+      }
+
+      const cliConfigUri = await this.getCliConfigFileUri();
+      const cliConfigPath = FileUri.fsPath(cliConfigUri);
+      await fs.writeFile(cliConfigPath, normalizedConfig, { encoding: 'utf-8' });
+      this.logger.info(`Wrote daemon state to ${cliConfigPath} (normalized via string replacement)`);
+    }
   }
 
   // #1445
