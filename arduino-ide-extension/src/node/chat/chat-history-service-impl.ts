@@ -296,6 +296,51 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
     return text.substring(0, 57) + '...';
   }
 
+  /**
+   * Generate the next available "New Chat" title by checking existing threads.
+   * Returns "New Chat" for the first thread, then "New Chat 1", "New Chat 2", etc.
+   * Continues from the highest number used, even if some numbers were freed by renaming.
+   * Example: If we have "New Chat", "New Chat 1", "New Chat 2", and "component search" (was "New Chat 3"),
+   * the next chat will be "New Chat 3" (continuing the sequence).
+   */
+  private async generateNewChatTitle(projectRoot: string): Promise<string> {
+    try {
+      const existingThreads = await this.listThreads(projectRoot);
+      
+      // Extract numbers from existing "New Chat" titles
+      const newChatPattern = /^New Chat(?: (\d+))?$/;
+      let hasBaseNewChat = false;
+      let maxNumber = 0;
+      
+      for (const thread of existingThreads) {
+        const match = thread.title.match(newChatPattern);
+        if (match) {
+          if (match[1]) {
+            // Has a number - track the maximum
+            const number = parseInt(match[1], 10);
+            maxNumber = Math.max(maxNumber, number);
+          } else {
+            // Base "New Chat" (no number)
+            hasBaseNewChat = true;
+          }
+        }
+      }
+      
+      // If base "New Chat" doesn't exist, use it
+      if (!hasBaseNewChat) {
+        return 'New Chat';
+      }
+      
+      // Continue from the next number after the maximum used
+      const nextNumber = maxNumber + 1;
+      return `New Chat ${nextNumber}`;
+    } catch (error) {
+      // If we can't list threads, default to "New Chat"
+      this.logger.warn('Failed to generate numbered New Chat title, using default:', error);
+      return 'New Chat';
+    }
+  }
+
   async listThreads(projectRoot?: string): Promise<ThreadSummary[]> {
     const resolvedRoot = await this.resolveProjectRoot(projectRoot);
     try {
@@ -320,9 +365,12 @@ export class ChatHistoryServiceImpl implements ChatHistoryService {
     const threadId = randomUUID();
     const now = new Date().toISOString();
 
-    let title = 'New Chat';
+    let title: string;
     if (initialMessage && initialMessage.role === 'user') {
       title = this.generateTitle(initialMessage);
+    } else {
+      // Generate numbered "New Chat" title
+      title = await this.generateNewChatTitle(resolvedRoot);
     }
 
     const thread: Thread = {
