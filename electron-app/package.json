@@ -139,6 +139,7 @@
         "nsis",
         "zip"
       ],
+      "icon": "resources/icon.ico",
       "sign": "./scripts/windowsCustomSign.js"
     },
     "mac": {

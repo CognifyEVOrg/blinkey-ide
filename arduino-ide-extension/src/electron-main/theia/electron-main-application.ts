@@ -13,7 +13,7 @@ import {
   DisposableCollection,
 } from '@theia/core/lib/common/disposable';
 import { FileUri } from '@theia/core/lib/common/file-uri';
-import { isOSX } from '@theia/core/lib/common/os';
+import { isOSX, isWindows } from '@theia/core/lib/common/os';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import { isObject, MaybePromise, Mutable } from '@theia/core/lib/common/types';
 import { ElectronSecurityToken } from '@theia/core/lib/electron-common/electron-token';
@@ -26,7 +26,7 @@ import { inject, injectable } from '@theia/core/shared/inversify';
 import { URI } from '@theia/core/shared/vscode-uri';
 import { log as logToFile, setup as setupFileLog } from 'node-log-rotate';
 import { fork } from 'node:child_process';
-import { promises as fs, readFileSync, rm, rmSync } from 'node:fs';
+import { existsSync, promises as fs, readFileSync, rm, rmSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { Argv } from 'yargs';
@@ -586,6 +586,28 @@ export class ElectronMainApplication extends TheiaElectronMainApplication {
     options.webPreferences.v8CacheOptions = 'bypassHeatCheck'; // TODO: verify this. VS Code use this V8 option.
     options.minWidth = 680;
     options.minHeight = 593;
+    
+    // Set the icon if not already set (especially for Windows in dev mode)
+    if (!options.icon && isWindows) {
+        // Try to find the icon in the electron-app/resources folder
+        const iconPaths = [
+          // Development mode - relative to compiled lib/backend/electron-main
+          join(__dirname, '..', '..', '..', 'electron-app', 'resources', 'icon.ico'),
+          // Alternative dev path
+          join(__dirname, '..', '..', '..', '..', 'electron-app', 'resources', 'icon.ico'),
+          // Production mode
+          join(process.resourcesPath || __dirname, 'app', 'resources', 'icon.ico'),
+          join(__dirname, '..', '..', 'resources', 'icon.ico'),
+        ];
+
+        for (const iconPath of iconPaths) {
+          if (existsSync(iconPath)) {
+            options.icon = iconPath;
+            break;
+          }
+        }
+    }
+    
     return options;
   }
 
