@@ -1,6 +1,6 @@
-<img src="https://content.arduino.cc/website/Arduino_logo_teal.svg" height="100" align="right" />
 
-# Blinkey AI-Powered Arduino IDE
+
+# Blinkey AI-Powered Firmware IDE
 
 > **⚠️ This is a fork of [Arduino IDE 2.x](https://github.com/arduino/arduino-ide)** - An AI-powered agentic IDE for embedded computers, built upon the excellent foundation of the Arduino IDE 2.x.
 
@@ -26,9 +26,7 @@ For development setup instructions, see [DEV_SETUP.md](DEV_SETUP.md).
 
 ## 📥 Download
 
-> **Note**: Pre-built releases for this fork are coming soon. For now, please build from source (see [DEV_SETUP.md](DEV_SETUP.md)).
-
-For the original Arduino IDE, you can download from the [official Arduino website](https://www.arduino.cc/en/software).
+For downloading the Blinkey IDE, you can download from here [Blinkey IDE website](https://cognifyev.com/blinkey).
 
 ## 💬 Support
 
