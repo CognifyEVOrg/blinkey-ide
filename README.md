@@ -2,13 +2,13 @@
 
 # Blinkey AI-Powered Firmware IDE
 
-> **⚠️ This is a fork of [Arduino IDE 2.x](https://github.com/arduino/arduino-ide)** - An AI-powered agentic IDE for embedded computers, built upon the excellent foundation of the Arduino IDE 2.x.
+> ** This is a fork of [Arduino IDE 2.x](https://github.com/arduino/arduino-ide)** - An AI-powered agentic IDE for embedded computers, built upon the excellent foundation of the Arduino IDE 2.x.
 
 This repository is a fork of the Arduino IDE 2.x, enhanced with AI capabilities to create an intelligent, agentic development environment for embedded systems. 
 
 **Original Project**: This codebase is based on [Arduino IDE 2.x](https://github.com/arduino/arduino-ide), which is a major rewrite of the original IDE. It is based on the [Theia IDE](https://theia-ide.org/) framework and built with [Electron](https://www.electronjs.org/). The backend operations such as compilation and uploading are offloaded to an [arduino-cli](https://github.com/arduino/arduino-cli) instance running in daemon mode.
 
-## 🚀 AI-Powered Features (In Development)
+## AI-Powered Features (In Development)
 
 This fork extends the Arduino IDE with AI capabilities for:
 
@@ -18,30 +18,30 @@ This fork extends the Arduino IDE with AI capabilities for:
 - **Smart Board Detection**: AI-assisted board selection and configuration
 - **Embedded AI Assistant**: Real-time help and suggestions during development
 
-## 📦 Installation & Setup
+## Installation & Setup
 
 For development setup instructions, see [DEV_SETUP.md](DEV_SETUP.md).
 
 ![](static/screenshot.png)
 
-## 📥 Download
+## Download
 
 For downloading the Blinkey IDE, you can download from here [Blinkey IDE website](https://cognifyev.com/blinkey).
 
-## 💬 Support
+## Support
 
 - **Issues & Bugs**: Report issues in this repository's [issue tracker](https://github.com/CognifyEVOrg/arduino-ide/issues)
 - **Original IDE Support**: See the [Arduino Help Center](https://support.arduino.cc/hc/en-us/categories/360002212660-Software-and-Downloads) and [forum](https://forum.arduino.cc/index.php?board=150.0)
 
 See [**the issue report guide**](docs/contributor-guide/issues.md#issue-report-guide) for instructions.
 
-### 🔒 Security
+### Security
 
 If you think you found a vulnerability or other security-related bug in this project, please report it by creating a [security advisory](https://github.com/CognifyEVOrg/arduino-ide/security/advisories/new) in this repository.
 
 For the original Arduino IDE security issues, contact [security@arduino.cc](mailto:security@arduino.cc).
 
-## 🤝 Contributions and Development
+## Contributions and Development
 
 Contributions are very welcome! This fork maintains compatibility with the original Arduino IDE while adding AI capabilities.
 
@@ -63,7 +63,7 @@ This fork is based on the excellent work of the Arduino team. Please consider:
 - [Buying original Arduino boards](https://store.arduino.cc/) to support the Arduino project
 - Reporting issues to the [original repository](https://github.com/arduino/arduino-ide/issues) for upstream bugs
 
-## 📄 License
+## License
 
 The code contained in this repository and the executable distributions are licensed under the terms of the **GNU AGPLv3**. The executable distributions contain third-party code licensed under other compatible licenses such as GPLv2, MIT and BSD-3.
 
@@ -75,7 +75,7 @@ This project is a fork of [Arduino IDE 2.x](https://github.com/arduino/arduino-i
 
 ---
 
-## 🔗 Links
+## Links
 
 - **This Fork**: [CognifyEVOrg/arduino-ide](https://github.com/CognifyEVOrg/arduino-ide)
 - **Original Project**: [arduino/arduino-ide](https://github.com/arduino/arduino-ide)
