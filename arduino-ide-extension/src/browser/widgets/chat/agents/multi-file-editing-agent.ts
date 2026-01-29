@@ -18,6 +18,7 @@ import {
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import URI from '@theia/core/lib/common/uri';
 import { SketchesService } from '../../../../common/protocol/sketches-service';
+import { cleanAgentArtifacts } from '../chat-context';
 
 /**
  * Parses code block directives for multi-file editing.
@@ -31,6 +32,9 @@ function parseEditDirectives(block: string): Array<{
   find?: string;
   replaceWith?: string;
 }> {
+  // Clean agent artifacts before parsing
+  block = cleanAgentArtifacts(block);
+  
   const edits: Array<{
     kind: 'overwrite' | 'replace';
     filePath: string;
@@ -101,7 +105,10 @@ function parseEditDirectives(block: string): Array<{
               const trimmed = line.trim();
               return !/^(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)/.test(trimmed);
             });
-          const replaceWith = replaceWithLines.join('\n');
+          let replaceWith = replaceWithLines.join('\n');
+          
+          // Clean the replaceWith content to remove any artifacts
+          replaceWith = cleanAgentArtifacts(replaceWith);
           
           edits.push({ kind: 'replace', filePath, find, replaceWith });
           continue;
@@ -119,7 +126,10 @@ function parseEditDirectives(block: string): Array<{
         const trimmed = line.trim();
         return !/^(REPLACE-IN:|FIND:|REPLACE-WITH:)/.test(trimmed);
       });
-      const content = contentLines.join('\n');
+      let content = contentLines.join('\n');
+      
+      // Clean the content to remove any artifacts
+      content = cleanAgentArtifacts(content);
       
       if (content.trim().length > 0) {
         edits.push({ kind: 'overwrite', filePath, content });
@@ -254,7 +264,10 @@ export class MultiFileEditingAgent implements Agent {
   async execute(request: AgentRequest, context: AgentContext): Promise<AgentResult> {
     try {
       const { parameters } = request;
-      const codeBlock = parameters.text as string;
+      let codeBlock = parameters.text as string;
+
+      // Clean agent artifacts before parsing
+      codeBlock = cleanAgentArtifacts(codeBlock);
 
       // Parse all edit directives
       const edits = parseEditDirectives(codeBlock);
@@ -302,7 +315,9 @@ export class MultiFileEditingAgent implements Agent {
             : baseDirUri.resolve(normalizedPath);
 
           if (edit.kind === 'overwrite') {
-            await this.fileService.write(targetUri, edit.content!);
+            // Clean content before writing
+            const cleanedContent = cleanAgentArtifacts(edit.content!);
+            await this.fileService.write(targetUri, cleanedContent);
             results.push({ file: targetUri.path.base, success: true });
           } else if (edit.kind === 'replace') {
             const fileContent = await this.fileService.read(targetUri);
@@ -316,9 +331,11 @@ export class MultiFileEditingAgent implements Agent {
                 error: 'Could not find target text',
               });
             } else {
+              // Clean replaceWith before applying
+              const cleanedReplaceWith = cleanAgentArtifacts(edit.replaceWith!);
               const updated =
                 originalText.slice(0, idx) +
-                edit.replaceWith +
+                cleanedReplaceWith +
                 originalText.slice(idx + edit.find!.length);
               await this.fileService.write(targetUri, updated);
               results.push({ file: targetUri.path.base, success: true });

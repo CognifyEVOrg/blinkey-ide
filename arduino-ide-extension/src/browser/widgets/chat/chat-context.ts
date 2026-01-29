@@ -213,6 +213,90 @@ function areBlocksSimilar(block1: string, block2: string, threshold: number = 0.
   return false;
 }
 
+/**
+ * Removes agent directives, meta-comments, and instructions from code blocks.
+ * This prevents LLM-generated comments from polluting the actual code.
+ * 
+ * After multiple interactions, LLMs sometimes include comments like:
+ * - "analyze code quality after fix"
+ * - "// FILE: sketch.ino" (when directives should be at block level, not in code)
+ * - "// REPLACE-IN: ..." (commented directives)
+ * - Other agent instruction comments
+ * 
+ * This function filters these out while preserving legitimate code comments.
+ */
+export function cleanAgentArtifacts(code: string): string {
+  const lines = code.split('\n');
+  const cleaned: string[] = [];
+  
+  // Patterns to identify and remove agent artifacts
+  const agentArtifactPatterns = [
+    // Agent directive patterns (even if commented) - these should be at block level, not in code
+    /^\s*\/\/\s*(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)/i,
+    /^\s*\/\*\s*(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)/i,
+    /^\s*\*\s*(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)/i,
+    
+    // Agent instruction comments (common after 4+ interactions)
+    /^\s*\/\/\s*analyze\s+code\s+quality/i,
+    /^\s*\/\/\s*check\s+(code|libraries|compilation)/i,
+    /^\s*\/\/\s*verify\s+(code|sketch|compilation)/i,
+    /^\s*\/\/\s*run\s+(analysis|verification|check)/i,
+    /^\s*\/\/\s*after\s+fix/i,
+    /^\s*\/\/\s*after\s+applying/i,
+    /^\s*\/\/\s*next\s+step/i,
+    /^\s*\/\/\s*then\s+(analyze|check|verify|run)/i,
+    
+    // Generic instruction patterns that are clearly agent-related
+    /^\s*\/\/\s*(TODO|NOTE|FIXME|HACK):\s*(analyze|check|verify|run)/i,
+    /^\s*\/\/\s*agent\s+(should|will|must|needs?)\s+/i,
+    /^\s*\/\/\s*\[agent\]/i,
+    /^\s*\/\/\s*agent\s+action/i,
+    
+    // Standalone directive lines without proper structure (orphaned directives)
+    /^\s*(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)\s*$/,
+    
+    // Lines that are clearly meta-instructions (not code)
+    /^\s*\/\/\s*apply\s+(fix|changes|code)/i,
+    /^\s*\/\/\s*test\s+(code|fix|changes)/i,
+  ];
+  
+  let skipNextEmpty = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    // Check if this line matches an agent artifact pattern
+    const isArtifact = agentArtifactPatterns.some(pattern => pattern.test(line));
+    
+    if (isArtifact) {
+      skipNextEmpty = true;
+      continue; // Skip this line
+    }
+    
+    // Skip empty lines that follow artifacts (clean up spacing)
+    if (skipNextEmpty && trimmed === '') {
+      skipNextEmpty = false;
+      continue;
+    }
+    
+    skipNextEmpty = false;
+    cleaned.push(line);
+  }
+  
+  // Remove trailing empty lines
+  while (cleaned.length > 0 && cleaned[cleaned.length - 1].trim() === '') {
+    cleaned.pop();
+  }
+  
+  const result = cleaned.join('\n');
+  
+  // If the result is too short after cleaning, it might have been all artifacts
+  // But we still return it - let the caller decide if it's valid
+  
+  return result;
+}
+
 export function extractExplicitCodeBlocks(content: string): string[] {
   const codeBlocks: string[] = [];
   const seenBlocks: string[] = []; // Track normalized blocks to detect duplicates
@@ -225,6 +309,19 @@ export function extractExplicitCodeBlocks(content: string): string[] {
       
       // Skip empty blocks
       if (!block || block.length === 0) {
+        continue;
+      }
+      
+      // Clean agent artifacts from the block (removes LLM-generated comments/directives)
+      // This prevents pollution after multiple interactions
+      const originalLength = block.length;
+      block = cleanAgentArtifacts(block);
+      
+      // If block became too short after cleaning (was mostly artifacts), skip it
+      // But preserve blocks that have proper directives (FILE:, REPLACE-IN:)
+      const hasDirectives = block.includes('FILE:') || block.includes('REPLACE-IN:');
+      if (!hasDirectives && block.trim().length < 10 && originalLength > 20) {
+        // Block was mostly artifacts, skip it
         continue;
       }
       

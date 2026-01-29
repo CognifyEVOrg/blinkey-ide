@@ -1,10 +1,3 @@
-/**
- * Inline Editing Agent
- * 
- * Handles small, targeted edits within a single file.
- * Based on AGENT_ARCHITECTURE.md specifications.
- */
-
 import { injectable, inject } from '@theia/core/shared/inversify';
 import {
   Agent,
@@ -19,6 +12,7 @@ import { EditorManager } from '@theia/editor/lib/browser/editor-manager';
 import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import URI from '@theia/core/lib/common/uri';
+import { cleanAgentArtifacts } from '../chat-context';
 
 /**
  * Parses code block directives for inline editing.
@@ -29,6 +23,9 @@ function parseInlineEditDirective(block: string): {
   find?: string;
   replaceWith?: string;
 } | null {
+  // Clean agent artifacts before parsing
+  block = cleanAgentArtifacts(block);
+  
   const lines = block.split('\n');
   if (lines.length === 0) {
     return null;
@@ -165,22 +162,28 @@ export class InlineEditingAgent implements Agent {
   async execute(request: AgentRequest, context: AgentContext): Promise<AgentResult> {
     try {
       const { parameters } = request;
-      const codeBlock = parameters.text as string;
+      let codeBlock = parameters.text as string;
+
+      // Clean agent artifacts from the code block before processing
+      codeBlock = cleanAgentArtifacts(codeBlock);
 
       // Parse the edit directive
       const edit = parseInlineEditDirective(codeBlock);
       
       if (!edit || !edit.filePath || !edit.find || edit.replaceWith === undefined) {
-        // Fallback: try to insert code at cursor
+        // Fallback: try to insert code at cursor (already cleaned above)
         return await this.insertCodeAtCursor(codeBlock, context);
       }
+
+      // Clean the replaceWith content to ensure no artifacts in the replacement
+      const cleanedReplaceWith = cleanAgentArtifacts(edit.replaceWith);
 
       // Apply structured edit - TypeScript now knows all properties are defined
       return await this.applyStructuredEdit(
         {
           filePath: edit.filePath,
           find: edit.find,
-          replaceWith: edit.replaceWith,
+          replaceWith: cleanedReplaceWith,
         },
         context
       );
@@ -260,6 +263,9 @@ export class InlineEditingAgent implements Agent {
    */
   private async insertCodeAtCursor(newCode: string, context: AgentContext): Promise<AgentResult> {
     try {
+      // Clean agent artifacts from new code before processing
+      newCode = cleanAgentArtifacts(newCode);
+      
       const activeEditor = this.editorManager.currentEditor;
       if (!activeEditor) {
         return {
@@ -290,7 +296,7 @@ export class InlineEditingAgent implements Agent {
       const existingContent = await this.fileService.read(fileUri);
       const existingText = existingContent.value;
 
-      // Intelligently merge the code
+      // Intelligently merge the code (cleaning already done above)
       const mergedCode = this.mergeCodeIntelligently(existingText, newCode);
 
       // Write merged code back to file
@@ -320,6 +326,11 @@ export class InlineEditingAgent implements Agent {
    * 4. Adding new code sections that don't exist
    */
   private mergeCodeIntelligently(existingCode: string, newCode: string): string {
+    // Clean agent artifacts from BOTH existing and new code before merging
+    // This prevents artifacts that may already be in the file from being preserved
+    existingCode = cleanAgentArtifacts(existingCode);
+    newCode = cleanAgentArtifacts(newCode);
+    
     // Normalize line endings
     const existingLines = existingCode.split(/\r?\n/);
     const newLines = newCode.split(/\r?\n/);
@@ -486,12 +497,44 @@ export class InlineEditingAgent implements Agent {
     const includeSet = new Set(includes);
     const variableSet = new Set(variables);
 
+    // Patterns to identify agent artifacts (same as cleanAgentArtifacts)
+    const agentArtifactPatterns = [
+      /^\s*\/\/\s*(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)/i,
+      /^\s*\/\/\s*analyze\s+code\s+quality/i,
+      /^\s*\/\/\s*check\s+(code|libraries|compilation)/i,
+      /^\s*\/\/\s*verify\s+(code|sketch|compilation)/i,
+      /^\s*\/\/\s*run\s+(analysis|verification|check)/i,
+      /^\s*\/\/\s*after\s+fix/i,
+      /^\s*\/\/\s*after\s+applying/i,
+      /^\s*\/\/\s*next\s+step/i,
+      /^\s*\/\/\s*then\s+(analyze|check|verify|run)/i,
+      /^\s*\/\/\s*(TODO|NOTE|FIXME|HACK):\s*(analyze|check|verify|run)/i,
+      /^\s*\/\/\s*agent\s+(should|will|must|needs?)\s+/i,
+      /^\s*\/\/\s*\[agent\]/i,
+      /^\s*\/\/\s*agent\s+action/i,
+      /^\s*(FILE:|REPLACE-IN:|FIND:|REPLACE-WITH:)\s*$/,
+      /^\s*\/\/\s*apply\s+(fix|changes|code)/i,
+      /^\s*\/\/\s*test\s+(code|fix|changes)/i,
+    ];
+
     // Collect lines that aren't includes, variables, or function lines
     for (const line of lines) {
       const trimmed = line.trim();
       
-      // Skip empty lines and standalone comments
-      if (trimmed === '' || (trimmed.startsWith('//') && !trimmed.includes('code'))) {
+      // Skip empty lines
+      if (trimmed === '') {
+        continue;
+      }
+      
+      // Skip agent artifact comments (even if they contain "code")
+      const isAgentArtifact = agentArtifactPatterns.some(pattern => pattern.test(line));
+      if (isAgentArtifact) {
+        continue;
+      }
+      
+      // Skip standalone comments that don't contain "code" (original logic preserved)
+      // But we've already filtered agent artifacts above, so this is for other comments
+      if (trimmed.startsWith('//') && !trimmed.includes('code')) {
         continue;
       }
 
